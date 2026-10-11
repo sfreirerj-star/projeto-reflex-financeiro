@@ -8,8 +8,9 @@ from .pagina_aportes import pagina_aportes
 from .pagina_dividendos import pagina_dividendos
 from .pagina_relatorios import pagina_relatorios
 from .pagina_reserva import pagina_reserva
+from .pagina_milenar import pagina_milenar  # <--- IMPORT ADICIONADO
 
-# Barra COMPLETA de Navegação para o Dashboard
+# Barra COMPLEta de Navegação para o Dashboard
 def navbar_dashboard() -> rx.Component:
     return rx.hstack(
         rx.hstack(
@@ -28,6 +29,7 @@ def navbar_dashboard() -> rx.Component:
             rx.link("Relatórios", href="/relatorios", color="white", weight="bold"),
             rx.link("Reserva", href="/reserva", color="white", weight="bold"),
             rx.link("Dividendos", href="/dividendos", color="white", weight="bold"),
+            rx.link("Milenar", href="/milenar", color="white", weight="bold"),  # <--- LINK ADICIONADO NO NAVBAR DO DASHBOARD
             spacing="4",
             align_items="center",
         ),
@@ -118,3 +120,4 @@ def pagina_dashboard() -> rx.Component:
 app = rx.App()
 app.add_page(pagina_dashboard, route="/")
 app.add_page(pagina_aportes, route="/aportes")
+app.add_page(pagina_milenar, route="/milenar", title="Alocação Milenar - Talmude") # <--- ROTA ADICIONADA

@@ -12,6 +12,7 @@ def barra_navegacao() -> rx.Component:
             rx.link("Relatórios", href="/relatorios", color="white", _hover={"color": "lightblue"}),
             rx.link("Reserva", href="/reserva", color="white", _hover={"color": "lightblue"}),
             rx.link("Dividendos", href="/dividendos", color="white", _hover={"color": "lightblue"}),
+            rx.link("Milenar", href="/milenar", color="white", _hover={"color": "lightblue"}),  # <--- LINK ADICIONADO AQUI
             spacing="3"
         ),
         justify="between",
