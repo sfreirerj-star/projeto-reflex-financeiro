@@ -20,6 +20,9 @@ class GerenciarState(rx.State):
         self.competencia_selecionada = nova_competencia
         self.cancelar_selecao()
 
+    def set_tipo_atual(self, valor: str):
+        self.tipo_atual = valor
+
     def set_categoria_edit(self, valor: str):
         self.categoria_edit = valor
 
@@ -62,11 +65,10 @@ class GerenciarState(rx.State):
 
     @rx.var
     def lista_lancamentos_mes(self) -> list[dict]:
-        """Retorna os lançamentos manuais filtrados pela competência selecionada (ordenados do mais recente para o mais antigo)."""
+        """Retorna os lançamentos manuais filtrados pela competência selecionada."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
-            # ORDENADO POR ID DESC (Mais recente primeiro)
             df = pd.read_sql_query("SELECT id, data, tipo, categoria, descricao, valor FROM lancamentos ORDER BY id DESC", conexao)
             conexao.close()
 
@@ -137,8 +139,8 @@ class GerenciarState(rx.State):
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
             cursor.execute(
-                "UPDATE lancamentos SET data = %s, categoria = %s, descricao = %s, valor = %s WHERE id = %s",
-                (self.data_edit.strip(), self.categoria_edit.strip(), self.descricao_edit.strip(), val_limpo, self.id_selecionado)
+                "UPDATE lancamentos SET tipo = %s, data = %s, categoria = %s, descricao = %s, valor = %s WHERE id = %s",
+                (self.tipo_atual.strip(), self.data_edit.strip(), self.categoria_edit.strip(), self.descricao_edit.strip(), val_limpo, self.id_selecionado)
             )
             conexao.commit()
             cursor.close()
@@ -177,7 +179,7 @@ def pagina_gerenciar() -> rx.Component:
         rx.container(
             rx.vstack(
                 rx.heading("✏️ Gerenciar, Editar ou Excluir Lançamentos", font_size="1.5rem", color="#1e293b", margin_top="15px", margin_bottom="2px"),
-                rx.text("Gerencie os seus lançamentos manuais diretamente pela base de dados.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
+                rx.text("Gerencie e corrija os seus lançamentos manuais diretamente.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
                 rx.divider(mb="4"),
 
                 # Filtro de Competência
@@ -195,7 +197,7 @@ def pagina_gerenciar() -> rx.Component:
                 rx.divider(mb="4"),
 
                 # Seleção de lançamento para editar
-                rx.heading("🔄 Selecionar Lançamento para Edição", font_size="1.2rem", color="#1e293b", mb="3"),
+                rx.heading("🔄 Selecionar Lançamento para Edição ou Correção", font_size="1.2rem", color="#1e293b", mb="3"),
                 rx.hstack(
                     rx.select(
                         GerenciarState.itens_select_lancamentos,
@@ -212,11 +214,17 @@ def pagina_gerenciar() -> rx.Component:
                     mb="4",
                 ),
 
-                # Área de Edição / Exclusão
+                # Área de Edição / Alteração de Tipo / Exclusão
                 rx.cond(
                     GerenciarState.id_selecionado > 0,
                     rx.vstack(
-                        rx.badge(rx.text(f"Tipo Fixo: {GerenciarState.tipo_atual}"), color_scheme="blue", mb="2"),
+                        rx.text("Tipo do Lançamento:", weight="bold", size="2"),
+                        rx.select(
+                            ["Despesa", "Receita", "Investimento"],
+                            value=GerenciarState.tipo_atual,
+                            on_change=GerenciarState.set_tipo_atual,
+                            width="100%",
+                        ),
                         
                         rx.text("Categoria:", weight="bold", size="2"),
                         rx.input(
@@ -264,7 +272,7 @@ def pagina_gerenciar() -> rx.Component:
 
                 rx.divider(mb="4"),
 
-                # Tabela Restrita a aprox. 6 linhas visíveis com Barra de Rolagem Lateral
+                # Tabela Restrita a aprox. 6 linhas visíveis com Barra de Rolagem
                 rx.heading("📋 Lançamentos do Mês Selecionado", font_size="1.2rem", color="#1e293b", mb="3"),
                 rx.cond(
                     GerenciarState.lista_lancamentos_mes.length() > 0,
@@ -297,8 +305,8 @@ def pagina_gerenciar() -> rx.Component:
                             size="3",
                             width="100%",
                         ),
-                        max_height="260px",  # Altura ideal para exibir exatamente ~6 linhas visíveis
-                        overflow_y="auto",   # Ativa a barra de rolagem vertical
+                        max_height="260px",
+                        overflow_y="auto",
                         width="100%",
                         border="1px solid #e2e8f0",
                         border_radius="8px",

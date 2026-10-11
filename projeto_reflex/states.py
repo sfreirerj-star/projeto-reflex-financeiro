@@ -58,7 +58,7 @@ class FinanceState(rx.State):
     edit_status: str = "Pendente"
     
     # ==========================================
-    # SETTERS EXPLÍCITOS (Evitam erros no Reflex)
+    # SETTERS EXPLÍCITOS
     # ==========================================
     def set_escolha_perfil(self, valor: str) -> None:
         self.escolha_perfil = valor
@@ -139,7 +139,7 @@ class FinanceState(rx.State):
     # FUNÇÕES DE LANÇAMENTOS FINANCEIROS
     # ==========================================
     def cadastrar_lancamento(self):
-        """Regista um novo movimento na base de dados e sincroniza com aportes se for investimento."""
+        """Regista um novo movimento na base de dados."""
         if not self.descricao.strip():
             return rx.window_alert("Por favor, preencha a descrição.")
         if not self.valor:
@@ -151,16 +151,14 @@ class FinanceState(rx.State):
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
             
-            # Insere na tabela principal de lançamentos
             cursor.execute(
                 """
                 INSERT INTO lancamentos (data, tipo, categoria, descricao, valor)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
                 (data_reg, self.tipo, self.categoria.strip(), self.descricao.strip(), val)
             )
 
-            # Sincronização automática: se o tipo for Investimento, grava também em desafio_aportes
             if self.tipo.strip().lower() in ["investimento", "investimentos"]:
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS desafio_aportes (
@@ -185,7 +183,6 @@ class FinanceState(rx.State):
             cursor.close()
             conexao.close()
 
-            # Limpar campos após o sucesso
             self.descricao = ""
             self.valor = ""
             self.categoria = ""
@@ -194,8 +191,37 @@ class FinanceState(rx.State):
         except Exception as e:
             return rx.window_alert(f"Erro ao salvar lançamento: {e}")
 
+    def excluir_lancamento(self, id_lancamento: int):
+        """Remove um lançamento do banco de dados e recalcula o histórico."""
+        try:
+            conexao = database.obter_conexao()
+            cursor = conexao.cursor()
+            cursor.execute("DELETE FROM lancamentos WHERE id = %s", (int(id_lancamento),))
+            conexao.commit()
+            cursor.close()
+            conexao.close()
+
+            self.calcular_resumo_competencia()
+            return rx.window_alert("Lançamento excluído com sucesso!")
+        except Exception as e:
+            return rx.window_alert(f"Erro ao excluir lançamento: {e}")
+
+    def alterar_tipo_lancamento(self, id_lancamento: int, novo_tipo: str):
+        """Altera rapidamente o tipo do lançamento (ex: de Investimento para Despesa)."""
+        try:
+            conexao = database.obter_conexao()
+            cursor = conexao.cursor()
+            cursor.execute("UPDATE lancamentos SET tipo = %s WHERE id = %s", (novo_tipo, int(id_lancamento)))
+            conexao.commit()
+            cursor.close()
+            conexao.close()
+
+            self.calcular_resumo_competencia()
+            return rx.window_alert(f"Tipo alterado para {novo_tipo} com sucesso!")
+        except Exception as e:
+            return rx.window_alert(f"Erro ao alterar tipo: {e}")
+
     def selecionar_lancamento(self, id_str: str):
-        """Carrega os dados de um lançamento para o formulário de edição."""
         try:
             self.id_selecionado = int(id_str)
             conexao = obter_conexao()
@@ -213,7 +239,6 @@ class FinanceState(rx.State):
             print(f"Erro ao selecionar lançamento: {e}")
 
     def salvar_alteracoes(self):
-        """Atualiza um lançamento existente na tabela principal e limpa a seleção."""
         if not self.id_selecionado:
             return rx.window_alert("Selecione um lançamento para editar.")
         try:
@@ -233,24 +258,18 @@ class FinanceState(rx.State):
             cursor.close()
             conexao.close()
 
-            # Limpar campos e ID selecionado após a atualização com sucesso
             self.id_selecionado = 0
             self.descricao = ""
             self.valor = ""
             self.categoria = ""
             
-            # Recarrega os totais e as listagens dependentes
             self.calcular_resumo_competencia()
-
             return rx.window_alert("Lançamento atualizado com sucesso!")
-        except ValueError:
-            return rx.window_alert("Valor numérico inválido.")
         except Exception as e:
             return rx.window_alert(f"Erro ao atualizar lançamento: {e}")
 
     @rx.var
     def lista_lancamentos(self) -> list[dict]:
-        """Lê os lançamentos do banco e atualiza os totais do painel."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
@@ -268,7 +287,6 @@ class FinanceState(rx.State):
     # ==========================================
     # FUNÇÕES DE GESTÃO DE DÍVIDAS
     # ==========================================
-   
     def cadastrar_divida(self):
         if not self.novo_credor.strip():
             return rx.window_alert("Por favor, preencha o nome do credor.")
@@ -281,7 +299,6 @@ class FinanceState(rx.State):
 
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
-            
             cursor.execute(
                 "INSERT INTO dividas (credor, valor_total, total_parcelas, valor_parcela, dia_vencimento, status) VALUES (%s, %s, %s, %s, %s, %s)",
                 (self.novo_credor, v_total, t_parc, v_parc, dia_v, status_atual)
@@ -299,12 +316,12 @@ class FinanceState(rx.State):
             return rx.window_alert("Dívida cadastrada com sucesso!")
         except Exception as e:
             return rx.window_alert(f"Erro ao salvar dívida: {e}")
-        
-    def selecionar_divida(self, id_str: str):
+
+    def seleccionar_divida(self, id_str: str):
         try:
             self.id_selecionado = int(id_str)
             conexao = database.obter_conexao()
-            df = pd.read_sql_query("SELECT * FROM dividas WHERE id = ?", conexao, params=(self.id_selecionado,))
+            df = pd.read_sql_query("SELECT * FROM dividas WHERE id = %s", conexao, params=(self.id_selecionado,))
             conexao.close()
 
             if not df.empty:
@@ -348,8 +365,8 @@ class FinanceState(rx.State):
             cursor.execute(
                 """
                 UPDATE dividas 
-                SET credor = ?, valor_total = ?, total_parcelas = ?, valor_parcela = ?, dia_vencimento = ?, status = ?
-                WHERE id = ?
+                SET credor = %s, valor_total = %s, total_parcelas = %s, valor_parcela = %s, dia_vencimento = %s, status = %s
+                WHERE id = %s
                 """,
                 (self.edit_credor.strip(), v_total, t_parc, v_parc, dia_v, self.edit_status, self.id_selecionado)
             )
@@ -366,7 +383,7 @@ class FinanceState(rx.State):
         try:
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
-            cursor.execute("DELETE FROM dividas WHERE id = ?", (self.id_selecionado,))
+            cursor.execute("DELETE FROM dividas WHERE id = %s", (self.id_selecionado,))
             conexao.commit()
             cursor.close()
             conexao.close()
@@ -388,11 +405,11 @@ class FinanceState(rx.State):
             return []
 
     def set_competencia_selecionada(self, nova_competencia: str):
-            self.competencia_selecionada = nova_competencia
-            self.calcular_resumo_competencia()
+        self.competencia_selecionada = nova_competencia
+        self.calcular_resumo_competencia()
 
     def calcular_resumo_competencia(self) -> None:
-        """Calcula de forma segura os totais da competência selecionada."""
+        """Calcula os totais da competência selecionada."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
@@ -455,7 +472,6 @@ class FinanceState(rx.State):
     # =========================================================================
     # GESTÃO DO DESAFIO RESERVA E APORTES
     # =========================================================================
-
     escolha_perfil: str = "1 Plantão CPROEIS (R$ 532,00 / mês)"
     meses_totais: int = 12
     meta_manual: float = 532.00
@@ -600,11 +616,11 @@ class FinanceState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
-            return rx.window.alert("Aporte registrado com sucesso!")
+            return rx.window_alert("Aporte registrado com sucesso!")
         except ValueError:
-            return rx.window.alert("Data inválida. Utilize o formato DD/MM/AAAA.")
+            return rx.window_alert("Data inválida. Utilize o formato DD/MM/AAAA.")
         except Exception as e:
-            return rx.window.alert(f"Erro ao salvar: {e}")
+            return rx.window_alert(f"Erro ao salvar: {e}")
 
     def salvar_resgate(self):
         origem_final = self.origem_personalizada.strip() if self.local_origem_sel == "Outro (Personalizado)" and self.origem_personalizada.strip() else self.local_origem_sel
@@ -616,11 +632,11 @@ class FinanceState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
-            return rx.window.alert("Resgate registrado com sucesso!")
+            return rx.window_alert("Resgate registrado com sucesso!")
         except ValueError:
-            return rx.window.alert("Data inválida. Utilize o formato DD/MM/AAAA.")
+            return rx.window_alert("Data inválida. Utilize o formato DD/MM/AAAA.")
         except Exception as e:
-            return rx.window.alert(f"Erro ao salvar resgate: {e}")
+            return rx.window_alert(f"Erro ao salvar resgate: {e}")
 
     def excluir_aporte(self, id_lancamento: int):
         try:
@@ -630,9 +646,9 @@ class FinanceState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
-            return rx.window.alert("Lançamento excluído com sucesso!")
+            return rx.window_alert("Lançamento excluído com sucesso!")
         except Exception as e:
-            return rx.window.alert(f"Erro ao excluir: {e}")
+            return rx.window_alert(f"Erro ao excluir: {e}")
 
     aportes: list[dict] = []
     
@@ -657,4 +673,4 @@ class DiagnosticoState(rx.State):
         self.competencia_selecionada = valor
 
     def carregar_dados(self):
-        self.lista_lancamentos
+        pass
