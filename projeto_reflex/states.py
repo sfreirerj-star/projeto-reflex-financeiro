@@ -317,7 +317,7 @@ class FinanceState(rx.State):
         except Exception as e:
             return rx.window_alert(f"Erro ao salvar dívida: {e}")
 
-    def seleccionar_divida(self, id_str: str):
+    def selecionar_divida(self, id_str: str):
         try:
             self.id_selecionado = int(id_str)
             conexao = database.obter_conexao()
