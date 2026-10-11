@@ -2,17 +2,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Instalar dependências do sistema necessárias, incluindo o unzip e curl para o Reflex
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    unzip \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-
-# Inicializa o projeto Reflex e compila o frontend para produção dentro do container
-RUN reflex init || true
 
 EXPOSE 8000
 

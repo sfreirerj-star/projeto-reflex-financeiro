@@ -62,10 +62,11 @@ class GerenciarState(rx.State):
 
     @rx.var
     def lista_lancamentos_mes(self) -> list[dict]:
-        """Retorna os lançamentos manuais filtrados pela competência selecionada."""
+        """Retorna os lançamentos manuais filtrados pela competência selecionada (ordenados do mais recente para o mais antigo)."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
+            # ORDENADO POR ID DESC (Mais recente primeiro)
             df = pd.read_sql_query("SELECT id, data, tipo, categoria, descricao, valor FROM lancamentos ORDER BY id DESC", conexao)
             conexao.close()
 
@@ -109,7 +110,6 @@ class GerenciarState(rx.State):
             id_num = int(id_str)
             self.id_selecionado = id_num
             
-            # Consulta corrigida para PostgreSQL (%s)
             database.inicializar_banco()
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
@@ -144,13 +144,7 @@ class GerenciarState(rx.State):
             cursor.close()
             conexao.close()
             
-            # Limpa o formulário de edição e fecha a seleção
             self.cancelar_selecao()
-            
-            # IMPORTANTE: Se o seu estado possui uma função que recarrega a tabela de lançamentos 
-            # (por exemplo, self.carregar_lancamentos() ou similar), chame-a aqui para atualizar a tela na hora.
-            # self.carregar_lancamentos() 
-            
             return rx.window_alert("Lançamento atualizado com sucesso!")
         except ValueError:
             return rx.window_alert("Data inválida. Utilize o formato DD/MM/AAAA.")
@@ -200,7 +194,7 @@ def pagina_gerenciar() -> rx.Component:
 
                 rx.divider(mb="4"),
 
-                # Seleção de lançamento para editar + Botão Cancelar unificado
+                # Seleção de lançamento para editar
                 rx.heading("🔄 Selecionar Lançamento para Edição", font_size="1.2rem", color="#1e293b", mb="3"),
                 rx.hstack(
                     rx.select(
@@ -218,7 +212,7 @@ def pagina_gerenciar() -> rx.Component:
                     mb="4",
                 ),
 
-                # Área de Edição / Exclusão (Exibida se houver seleção)
+                # Área de Edição / Exclusão
                 rx.cond(
                     GerenciarState.id_selecionado > 0,
                     rx.vstack(
@@ -270,37 +264,44 @@ def pagina_gerenciar() -> rx.Component:
 
                 rx.divider(mb="4"),
 
-                # Tabela Resumo dos Lançamentos do Mês (Abaixo)
+                # Tabela Restrita a aprox. 6 linhas visíveis com Barra de Rolagem Lateral
                 rx.heading("📋 Lançamentos do Mês Selecionado", font_size="1.2rem", color="#1e293b", mb="3"),
                 rx.cond(
                     GerenciarState.lista_lancamentos_mes.length() > 0,
-                    rx.table.root(
-                        rx.table.header(
-                            rx.table.row(
-                                rx.table.column_header_cell("ID"),
-                                rx.table.column_header_cell("Data"),
-                                rx.table.column_header_cell("Tipo"),
-                                rx.table.column_header_cell("Categoria"),
-                                rx.table.column_header_cell("Descrição"),
-                                rx.table.column_header_cell("Valor"),
-                            ),
-                        ),
-                        rx.table.body(
-                            rx.foreach(
-                                GerenciarState.lista_lancamentos_mes,
-                                lambda item: rx.table.row(
-                                    rx.table.cell(item["id"]),
-                                    rx.table.cell(item["data"]),
-                                    rx.table.cell(item["tipo"]),
-                                    rx.table.cell(item["categoria"]),
-                                    rx.table.cell(item["descricao"]),
-                                    rx.table.cell(item["valor"]),
+                    rx.box(
+                        rx.table.root(
+                            rx.table.header(
+                                rx.table.row(
+                                    rx.table.column_header_cell("ID"),
+                                    rx.table.column_header_cell("Data"),
+                                    rx.table.column_header_cell("Tipo"),
+                                    rx.table.column_header_cell("Categoria"),
+                                    rx.table.column_header_cell("Descrição"),
+                                    rx.table.column_header_cell("Valor"),
                                 ),
-                            )
+                            ),
+                            rx.table.body(
+                                rx.foreach(
+                                    GerenciarState.lista_lancamentos_mes,
+                                    lambda item: rx.table.row(
+                                        rx.table.cell(item["id"]),
+                                        rx.table.cell(item["data"]),
+                                        rx.table.cell(item["tipo"]),
+                                        rx.table.cell(item["categoria"]),
+                                        rx.table.cell(item["descricao"]),
+                                        rx.table.cell(item["valor"]),
+                                    ),
+                                )
+                            ),
+                            variant="surface",
+                            size="3",
+                            width="100%",
                         ),
-                        variant="surface",
-                        size="3",
+                        max_height="260px",  # Altura ideal para exibir exatamente ~6 linhas visíveis
+                        overflow_y="auto",   # Ativa a barra de rolagem vertical
                         width="100%",
+                        border="1px solid #e2e8f0",
+                        border_radius="8px",
                         mb="6",
                     ),
                     rx.text("Nenhum lançamento encontrado para esta competência.", color="gray", mb="6"),

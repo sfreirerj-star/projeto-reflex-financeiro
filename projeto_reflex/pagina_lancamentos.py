@@ -27,7 +27,7 @@ class LancamentoState(rx.State):
         self.valor = valor
 
     def salvar_lancamento(self):
-        """Função para salvar o lançamento na base de dados do Neon."""
+        """Função para salvar o lançamento na base de dados."""
         if not self.categoria.strip():
             return rx.window_alert("Por favor, preencha a categoria.")
         if not self.valor:
@@ -59,10 +59,11 @@ class LancamentoState(rx.State):
 
     @rx.var
     def lista_lancamentos_mes(self) -> list[dict]:
-        """Carrega o histórico de lançamentos do mês atual para exibição."""
+        """Carrega o histórico de lançamentos do mês atual ordenado do mais recente para o mais antigo."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
+            # ORDENADO POR ID DESC (Mais recente primeiro)
             df = pd.read_sql_query("SELECT id, data, tipo, categoria, descricao, valor FROM lancamentos ORDER BY id DESC", conexao)
             conexao.close()
 
@@ -105,7 +106,6 @@ def pagina_lancamentos() -> rx.Component:
                 
                 # Form em Grid Simétrico e Limpo
                 rx.vstack(
-                    # Linha 1: Data, Categoria, Descrição
                     rx.grid(
                         rx.vstack(
                             rx.text("Data (DD/MM/AAAA)", weight="bold", size="2"),
@@ -127,7 +127,6 @@ def pagina_lancamentos() -> rx.Component:
                         width="100%",
                     ),
 
-                    # Linha 2: Tipo, Valor, Botão Salvar
                     rx.grid(
                         rx.vstack(
                             rx.text("Tipo", weight="bold", size="2"),
@@ -161,37 +160,44 @@ def pagina_lancamentos() -> rx.Component:
 
                 rx.divider(mb="4"),
 
-                # Histórico de Lançamentos
+                # Histórico com altura limitada (~6 linhas) e Barra de Rolagem
                 rx.heading("📋 Histórico de Lançamentos da Competência Atual", font_size="1.2rem", color="#1e293b", mb="3"),
                 rx.cond(
                     LancamentoState.lista_lancamentos_mes.length() > 0,
-                    rx.table.root(
-                        rx.table.header(
-                            rx.table.row(
-                                rx.table.column_header_cell("ID"),
-                                rx.table.column_header_cell("Data"),
-                                rx.table.column_header_cell("Tipo"),
-                                rx.table.column_header_cell("Categoria"),
-                                rx.table.column_header_cell("Descrição"),
-                                rx.table.column_header_cell("Valor"),
-                            ),
-                        ),
-                        rx.table.body(
-                            rx.foreach(
-                                LancamentoState.lista_lancamentos_mes,
-                                lambda item: rx.table.row(
-                                    rx.table.cell(item["id"]),
-                                    rx.table.cell(item["data"]),
-                                    rx.table.cell(item["tipo"]),
-                                    rx.table.cell(item["categoria"]),
-                                    rx.table.cell(item["descricao"]),
-                                    rx.table.cell(item["valor"]),
+                    rx.box(
+                        rx.table.root(
+                            rx.table.header(
+                                rx.table.row(
+                                    rx.table.column_header_cell("ID"),
+                                    rx.table.column_header_cell("Data"),
+                                    rx.table.column_header_cell("Tipo"),
+                                    rx.table.column_header_cell("Categoria"),
+                                    rx.table.column_header_cell("Descrição"),
+                                    rx.table.column_header_cell("Valor"),
                                 ),
-                            )
+                            ),
+                            rx.table.body(
+                                rx.foreach(
+                                    LancamentoState.lista_lancamentos_mes,
+                                    lambda item: rx.table.row(
+                                        rx.table.cell(item["id"]),
+                                        rx.table.cell(item["data"]),
+                                        rx.table.cell(item["tipo"]),
+                                        rx.table.cell(item["categoria"]),
+                                        rx.table.cell(item["descricao"]),
+                                        rx.table.cell(item["valor"]),
+                                    ),
+                                )
+                            ),
+                            variant="surface",
+                            size="3",
+                            width="100%",
                         ),
-                        variant="surface",
-                        size="3",
+                        max_height="260px",  # Exibe aprox. 6 linhas e ativa a barra de rolagem vertical
+                        overflow_y="auto",
                         width="100%",
+                        border="1px solid #e2e8f0",
+                        border_radius="8px",
                     ),
                     rx.text("Nenhum lançamento registrado nesta competência.", color="gray"),
                 ),
