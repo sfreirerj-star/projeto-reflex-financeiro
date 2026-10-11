@@ -1,12 +1,28 @@
-import os
-import uvicorn
+FROM python:3.11-slim
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    # Executa o servidor apontando diretamente para o ASGI gerado na build do Reflex
-    uvicorn.run(
-        "web._static.server:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info"
-    )
+# Instalar dependências do sistema
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    unzip \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt-get/lists/*
+
+WORKDIR /app
+
+# Copiar e instalar dependências Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar todos os ficheiros do projeto
+COPY . .
+
+# Inicializar o Reflex
+RUN reflex init
+
+# Expor a porta padrão do Hugging Face (7860)
+EXPOSE 7860
+
+# Comando para iniciar o Reflex mapeando a porta 7860
+CMD ["reflex", "run", "--env", "prod", "--frontend-port", "7860", "--backend-port", "8000"]
