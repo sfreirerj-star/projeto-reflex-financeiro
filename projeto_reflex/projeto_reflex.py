@@ -118,3 +118,6 @@ def pagina_dashboard() -> rx.Component:
 app = rx.App()
 app.add_page(pagina_dashboard, route="/")
 app.add_page(pagina_aportes, route="/aportes")
+
+# Adicione esta linha no final do arquivo para expor a API FastAPI diretamente:
+api = app.api
