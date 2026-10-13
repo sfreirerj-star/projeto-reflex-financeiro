@@ -1,5 +1,6 @@
 import reflex as rx
 from projeto_reflex.states import FinanceState
+from projeto_reflex.navegacao import barra_navegacao
 from .pagina_lancamentos import pagina_lancamentos
 from .pagina_raio_x_dividas import pagina_raio_x_dividas
 from .pagina_gerenciar import pagina_gerenciar
@@ -9,37 +10,6 @@ from .pagina_dividendos import pagina_dividendos
 from .pagina_relatorios import pagina_relatorios
 from .pagina_reserva import pagina_reserva
 from .pagina_milenar import pagina_milenar
-
-# Barra de Navegação Totalmente Responsiva
-def navbar_dashboard() -> rx.Component:
-    return rx.hstack(
-        rx.hstack(
-            rx.heading("💰 Finanças", size={"base": "5", "md": "6"}, color="white"),
-            spacing="2",
-            align_items="center",
-        ),
-        rx.spacer(),
-        rx.flex(
-            rx.link("Dashboard", href="/", color="white", weight="bold"),
-            rx.link("Novo Lançamento", href="/lancamentos", color="white", weight="bold"),
-            rx.link("Gerenciar", href="/gerenciar", color="white", weight="bold"),
-            rx.link("Raio-X Dívidas", href="/raio-x-dividas", color="white", weight="bold"),
-            rx.link("Desafio", href="/aportes", color="white", weight="bold"),
-            rx.link("Investimentos", href="/investimentos", color="white", weight="bold"),
-            rx.link("Relatórios", href="/relatorios", color="white", weight="bold"),
-            rx.link("Reserva", href="/reserva", color="white", weight="bold"),
-            rx.link("Dividendos", href="/dividendos", color="white", weight="bold"),
-            rx.link("Milenar", href="/milenar", color="white", weight="bold"),
-            direction="row",
-            wrap="wrap",
-            spacing={"base": "2", "md": "4"},
-            align_items="center",
-        ),
-        background_color="blue",
-        padding={"base": "0.8em 1em", "md": "1em 2em"},
-        width="100%",
-        wrap="wrap",
-    )
 
 def card_resumo(titulo: str, valor: str, cor_texto: str = "#1e293b") -> rx.Component:
     return rx.box(
@@ -54,7 +24,8 @@ def card_resumo(titulo: str, valor: str, cor_texto: str = "#1e293b") -> rx.Compo
         border_radius="10px",
         box_shadow="0 2px 4px rgba(0,0,0,0.05)",
         border="1px solid #e2e8f0",
-        width="100%",
+        width=["100%", "220px"],
+        flex_grow="1",
     )
 
 def dashboard_resumo_competencia() -> rx.Component:
@@ -81,14 +52,15 @@ def dashboard_resumo_competencia() -> rx.Component:
             margin_bottom="15px",
         ),
 
-        # Grelha responsiva: 1 coluna no telemóvel, 2 em tablets pequenos, 3 em médios e 5 no desktop
-        rx.grid(
+        # Cartões de Resumo com Flexbox e wrap para perfeita adaptação mobile
+        rx.flex(
             card_resumo("Saldo Anterior", FinanceState.fmt_saldo_anterior),
             card_resumo("Entradas", FinanceState.fmt_entradas, "#16a34a"),
             card_resumo("Gastos Comuns", FinanceState.fmt_gastos, "#dc2626"),
             card_resumo("Aportes do Mês", FinanceState.fmt_aportes),
             card_resumo("Saldo Final / Remanescente", FinanceState.fmt_saldo_final, "#2563eb"),
-            columns={"base": "1", "sm": "2", "md": "3", "lg": "5"},
+            direction="row",
+            wrap="wrap",
             spacing="3",
             width="100%",
         ),
@@ -98,7 +70,7 @@ def dashboard_resumo_competencia() -> rx.Component:
 
 def pagina_dashboard() -> rx.Component:
     return rx.vstack(
-        navbar_dashboard(),
+        barra_navegacao(),  # Utiliza o menu unificado e responsivo
         rx.container(
             rx.vstack(
                 rx.heading("Controle Financeiro - Painel do Marcelo", font_size={"base": "1.2rem", "md": "1.5rem"}, color="#1e293b", margin_top="15px", margin_bottom="2px"),
