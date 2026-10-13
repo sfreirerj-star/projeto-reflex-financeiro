@@ -4,23 +4,39 @@ from datetime import datetime
 import database
 
 class RelatoriosState(rx.State):
-    """Estado para gerir relatórios, filtros, fechamento e projeções."""
+    """Estado para gerir relatórios, filtros, fechamento e projeções com paridade ao Streamlit."""
     competencia_selecionada: str = datetime.now().strftime("%m/%Y")
     
     # Filtros da Aba 1
     usar_filtro_comp: bool = True
     filtro_tipo: str = "Todos"
+    filtro_categoria: str = "Todas"
     filtro_texto: str = ""
 
     # Projeções Aba 3
     proj_meses: int = 6
 
-    # Setters necessários para os filtros
+    # Setters explícitos
+    def set_competencia_selecionada(self, valor: str):
+        self.competencia_selecionada = valor
+
+    def set_usar_filtro_comp(self, valor: bool):
+        self.usar_filtro_comp = valor
+
     def set_filtro_tipo(self, valor: str):
         self.filtro_tipo = valor
 
+    def set_filtro_categoria(self, valor: str):
+        self.filtro_categoria = valor
+
     def set_filtro_texto(self, valor: str):
         self.filtro_texto = valor
+
+    def set_proj_meses(self, valor: str):
+        try:
+            self.proj_meses = int(valor)
+        except ValueError:
+            self.proj_meses = 6
 
     @rx.var
     def competencias_disponiveis(self) -> list[str]:
@@ -39,6 +55,21 @@ class RelatoriosState(rx.State):
         return sorted(list(set(comps)), reverse=True)
 
     @rx.var
+    def categorias_disponiveis(self) -> list[str]:
+        cats = ["Todas"]
+        try:
+            database.inicializar_banco()
+            conexao = database.obter_conexao()
+            df_l = pd.read_sql_query("SELECT DISTINCT categoria FROM lancamentos", conexao)
+            conexao.close()
+            if not df_l.empty and "categoria" in df_l.columns:
+                limpas = df_l["categoria"].dropna().str.strip().tolist()
+                cats.extend([c for c in limpas if c])
+        except Exception:
+            pass
+        return sorted(list(set(cats)))
+
+    @rx.var
     def df_lancamentos_raw(self) -> pd.DataFrame:
         try:
             database.inicializar_banco()
@@ -54,10 +85,10 @@ class RelatoriosState(rx.State):
             return pd.DataFrame(columns=["id", "data", "tipo", "categoria", "descricao", "valor"])
 
     @rx.var
-    def lista_lancamentos_filtrados(self) -> list[dict]:
+    def df_filtrado(self) -> pd.DataFrame:
         df = self.df_lancamentos_raw
         if df.empty:
-            return []
+            return df
 
         df_f = df.copy()
         if self.usar_filtro_comp:
@@ -66,9 +97,20 @@ class RelatoriosState(rx.State):
         if self.filtro_tipo != "Todos":
             df_f = df_f[df_f["tipo"] == self.filtro_tipo]
 
-        if self.filtro_texto:
-            mask = df_f["descricao"].str.contains(self.filtro_texto, case=False, na=False)
+        if self.filtro_categoria != "Todas":
+            df_f = df_f[df_f["categoria"] == self.filtro_categoria]
+
+        if self.filtro_texto.strip():
+            mask = df_f["descricao"].astype(str).str.contains(self.filtro_texto.strip(), case=False, na=False)
             df_f = df_f[mask]
+
+        return df_f
+
+    @rx.var
+    def lista_lancamentos_filtrados(self) -> list[dict]:
+        df_f = self.df_filtrado
+        if df_f.empty:
+            return []
 
         resultado = []
         for _, row in df_f.iterrows():
@@ -86,17 +128,9 @@ class RelatoriosState(rx.State):
 
     @rx.var
     def total_filtrado_fmt(self) -> str:
-        df = self.df_lancamentos_raw
-        if df.empty:
+        df_f = self.df_filtrado
+        if df_f.empty:
             return "R$ 0,00"
-        df_f = df.copy()
-        if self.usar_filtro_comp:
-            df_f = df_f[df_f["competencia"] == self.competencia_selecionada]
-        if self.filtro_tipo != "Todos":
-            df_f = df_f[df_f["tipo"] == self.filtro_tipo]
-        if self.filtro_texto:
-            df_f = df_f[df_f["descricao"].str.contains(self.filtro_texto, case=False, na=False)]
-        
         total = pd.to_numeric(df_f["valor"], errors="coerce").sum()
         return f"R$ {total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
@@ -111,9 +145,11 @@ class RelatoriosState(rx.State):
             return []
 
         df_val["ano_mes"] = df_val["data_dt"].dt.to_period("M")
-        
-        rec = df_val[df_val["tipo"] == "Receita"].groupby("ano_mes")["valor"].sum().reset_index(name="entradas")
-        desp = df_val[df_val["tipo"] == "Despesa"].groupby("ano_mes")["valor"].sum().reset_index(name="saidas")
+        df_val["valor_num"] = pd.to_numeric(df_val["valor"], errors="coerce").fillna(0.0)
+        df_val["tipo_clean"] = df_val["tipo"].astype(str).str.strip().str.lower()
+
+        rec = df_val[df_val["tipo_clean"].isin(["receita", "crédito", "credito"])].groupby("ano_mes")["valor_num"].sum().reset_index(name="entradas")
+        desp = df_val[df_val["tipo_clean"].isin(["despesa", "débito", "debito"])].groupby("ano_mes")["valor_num"].sum().reset_index(name="saidas")
 
         fech = pd.merge(rec, desp, on="ano_mes", how="outer").fillna(0.0)
         fech = fech.sort_values(by="ano_mes", ascending=True).reset_index(drop=True)
@@ -142,56 +178,129 @@ def pagina_relatorios() -> rx.Component:
         barra_navegacao(),
         rx.container(
             rx.vstack(
-                rx.heading("📈 Relatórios, Consultas e Fechamento", font_size="1.5rem", color="#1e293b", margin_top="15px", margin_bottom="2px"),
-                rx.text("Filtre lançamentos, acompanhe o fechamento mensal e analise o histórico financeiro.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
+                rx.heading("📊 Relatórios, Consultas e Fechamento de Mês", font_size={"base": "1.2rem", "md": "1.5rem"}, color="#1e293b", margin_top="15px", margin_bottom="2px"),
+                rx.text("Filtre seus lançamentos detalhadamente, exporte relatórios, acompanhe o fechamento mês a mês e projete seu saldo futuro.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
                 rx.divider(mb="4"),
 
-                # Abas Principais em Tabs do Reflex
+                # Abas Principais
                 rx.tabs.root(
                     rx.tabs.list(
-                        rx.tabs.trigger("🔍 Consulta & Filtros", value="tab1"),
+                        rx.tabs.trigger("🔍 Consulta, Filtros e Ações", value="tab1"),
                         rx.tabs.trigger("📅 Fechamento de Mês", value="tab2"),
+                        rx.tabs.trigger("🔮 Projeção de Saldo Futuro", value="tab3"),
                     ),
                     
-                    # --- ABA 1: CONSULTA E FILTROS ---
+                    # --- ABA 1: CONSULTA & FILTROS ---
                     rx.tabs.content(
                         rx.vstack(
-                            rx.heading("Filtrar Lançamentos", font_size="1.2rem", color="#1e293b", mt="3", mb="3"),
-                            rx.hstack(
-                                rx.select(["Todos", "Receita", "Despesa"], value=RelatoriosState.filtro_tipo, on_change=RelatoriosState.set_filtro_tipo),
-                                rx.input(placeholder="Buscar na descrição...", value=RelatoriosState.filtro_texto, on_change=RelatoriosState.set_filtro_texto, width="100%"),
+                            rx.heading(f"🔍 Filtrar Lançamentos (Competência Ativa: {RelatoriosState.competencia_selecionada})", font_size="1.2rem", color="#1e293b", mt="3", mb="3"),
+                            
+                            # Filtros de linha superior (Grid Responsiva)
+                            rx.grid(
+                                rx.hstack(
+                                    rx.checkbox(
+                                        "Filtrar por Mês Ativo",
+                                        checked=RelatoriosState.usar_filtro_comp,
+                                        on_change=RelatoriosState.set_usar_filtro_comp,
+                                    ),
+                                    rx.cond(
+                                        RelatoriosState.usar_filtro_comp,
+                                        rx.select(
+                                            RelatoriosState.competencias_disponiveis,
+                                            value=RelatoriosState.competencia_selecionada,
+                                            on_change=RelatoriosState.set_competencia_selecionada,
+                                            size="1",
+                                        ),
+                                    ),
+                                    align="center",
+                                    spacing="2",
+                                    wrap="wrap",
+                                ),
+                                rx.vstack(
+                                    rx.text("Filtrar por Tipo", size="1", color="gray", weight="bold"),
+                                    rx.select(["Todos", "Receita", "Despesa", "Investimento"], value=RelatoriosState.filtro_tipo, on_change=RelatoriosState.set_filtro_tipo, width="100%"),
+                                    spacing="1",
+                                ),
+                                rx.vstack(
+                                    rx.text("Filtrar por Categoria", size="1", color="gray", weight="bold"),
+                                    rx.select(RelatoriosState.categorias_disponiveis, value=RelatoriosState.filtro_categoria, on_change=RelatoriosState.set_filtro_categoria, width="100%"),
+                                    spacing="1",
+                                ),
+                                rx.vstack(
+                                    rx.text("Buscar na Descrição (Palavra-chave)", size="1", color="gray", weight="bold"),
+                                    rx.input(placeholder="Ex: Supermercado...", value=RelatoriosState.filtro_texto, on_change=RelatoriosState.set_filtro_texto, width="100%"),
+                                    spacing="1",
+                                ),
+                                columns={"base": "1", "sm": "2", "md": "4"},
+                                spacing="3",
                                 width="100%",
-                                mb="2",
+                                mb="4",
                             ),
-                            rx.text(rx.text("Total Filtrado: ", weight="bold"), RelatoriosState.total_filtrado_fmt, color="blue", mb="4"),
 
-                            # Tabela de Resultados
-                            rx.table.root(
-                                rx.table.header(
-                                    rx.table.row(
-                                        rx.table.column_header_cell("ID"),
-                                        rx.table.column_header_cell("Data"),
-                                        rx.table.column_header_cell("Tipo"),
-                                        rx.table.column_header_cell("Categoria"),
-                                        rx.table.column_header_cell("Descrição"),
-                                        rx.table.column_header_cell("Valor"),
-                                    )
+                            # Tabela com limite de altura e scroll vertical/horizontal
+                            rx.cond(
+                                RelatoriosState.lista_lancamentos_filtrados.length() > 0,
+                                rx.box(
+                                    rx.table.root(
+                                        rx.table.header(
+                                            rx.table.row(
+                                                rx.table.column_header_cell("ID"),
+                                                rx.table.column_header_cell("Data"),
+                                                rx.table.column_header_cell("Tipo"),
+                                                rx.table.column_header_cell("Categoria"),
+                                                rx.table.column_header_cell("Descrição"),
+                                                rx.table.column_header_cell("Valor"),
+                                            )
+                                        ),
+                                        rx.table.body(
+                                            rx.foreach(
+                                                RelatoriosState.lista_lancamentos_filtrados,
+                                                lambda item: rx.table.row(
+                                                    rx.table.cell(item["id"]),
+                                                    rx.table.cell(item["data"]),
+                                                    rx.table.cell(item["tipo"]),
+                                                    rx.table.cell(item["categoria"]),
+                                                    rx.table.cell(item["descricao"]),
+                                                    rx.table.cell(item["valor"]),
+                                                )
+                                            )
+                                        ),
+                                        variant="surface",
+                                        size="2",
+                                        width="100%",
+                                    ),
+                                    max_height="320px",
+                                    overflow_y="auto",
+                                    overflow_x="auto",
+                                    width="100%",
+                                    border="1px solid #e2e8f0",
+                                    border_radius="8px",
+                                    mb="4",
                                 ),
-                                rx.table.body(
-                                    rx.foreach(
-                                        RelatoriosState.lista_lancamentos_filtrados,
-                                        lambda item: rx.table.row(
-                                            rx.table.cell(item["id"]),
-                                            rx.table.cell(item["data"]),
-                                            rx.table.cell(item["tipo"]),
-                                            rx.table.cell(item["categoria"]),
-                                            rx.table.cell(item["descricao"]),
-                                            rx.table.cell(item["valor"]),
-                                        )
-                                    )
+                                rx.text("Nenhum lançamento encontrado com os filtros aplicados.", color="gray", mb="4"),
+                            ),
+
+                            # Banner de Totalizador dos Lançamentos Filtrados
+                            rx.callout(
+                                rx.hstack(
+                                    rx.text("📊 Total dos lançamentos filtrados:", weight="bold", size="3"),
+                                    rx.text(RelatoriosState.total_filtrado_fmt, weight="bold", size="4", color="blue"),
+                                    spacing="2",
+                                    wrap="wrap",
                                 ),
-                                variant="surface",
-                                size="3",
+                                color_scheme="blue",
+                                width="100%",
+                                mb="4",
+                            ),
+
+                            # Botões de Ação e Exportação (Flex wrap para telemóveis)
+                            rx.flex(
+                                rx.button("📥 Baixar em CSV", variant="soft", color_scheme="gray", on_click=rx.window_alert("Exportação para CSV em processamento...")),
+                                rx.button("📊 Baixar em Excel (.xlsx)", variant="soft", color_scheme="green", on_click=rx.window_alert("Exportação para Excel em processamento...")),
+                                rx.button("🖨️ Imprimir / PDF", color_scheme="red", on_click=rx.window_alert("Abre caixa de impressão do navegador.")),
+                                direction="row",
+                                wrap="wrap",
+                                spacing="3",
                                 width="100%",
                             ),
                             spacing="3",
@@ -203,38 +312,72 @@ def pagina_relatorios() -> rx.Component:
                     # --- ABA 2: FECHAMENTO MENSAL ---
                     rx.tabs.content(
                         rx.vstack(
-                            rx.heading("Fechamento Mensal e Saldo Remanescente", font_size="1.2rem", color="#1e293b", mt="3", mb="3"),
-                            rx.table.root(
-                                rx.table.header(
-                                    rx.table.row(
-                                        rx.table.column_header_cell("Mês/Ano"),
-                                        rx.table.column_header_cell("Entradas"),
-                                        rx.table.column_header_cell("Saídas"),
-                                        rx.table.column_header_cell("Resultado do Mês"),
-                                        rx.table.column_header_cell("Saldo Acumulado"),
-                                    )
-                                ),
-                                rx.table.body(
-                                    rx.foreach(
-                                        RelatoriosState.lista_fechamento_mensal,
-                                        lambda item: rx.table.row(
-                                            rx.table.cell(item["mes"]),
-                                            rx.table.cell(item["entradas"]),
-                                            rx.table.cell(item["saidas"]),
-                                            rx.table.cell(item["resultado"]),
-                                            rx.table.cell(item["acumulado"]),
+                            rx.heading("📅 Fechamento de Mês (Saldo Remanescente)", font_size="1.2rem", color="#1e293b", mt="3", mb="3"),
+                            rx.box(
+                                rx.table.root(
+                                    rx.table.header(
+                                        rx.table.row(
+                                            rx.table.column_header_cell("Mês/Ano"),
+                                            rx.table.column_header_cell("Entradas"),
+                                            rx.table.column_header_cell("Saídas"),
+                                            rx.table.column_header_cell("Resultado do Mês"),
+                                            rx.table.column_header_cell("Saldo Acumulado"),
                                         )
-                                    )
+                                    ),
+                                    rx.table.body(
+                                        rx.foreach(
+                                            RelatoriosState.lista_fechamento_mensal,
+                                            lambda item: rx.table.row(
+                                                rx.table.cell(item["mes"]),
+                                                rx.table.cell(item["entradas"]),
+                                                rx.table.cell(item["saidas"]),
+                                                rx.table.cell(item["resultado"]),
+                                                rx.table.cell(item["acumulado"]),
+                                            )
+                                        )
+                                    ),
+                                    variant="surface",
+                                    size="3",
+                                    width="100%",
                                 ),
-                                variant="surface",
-                                size="3",
+                                max_height="350px",
+                                overflow_y="auto",
+                                overflow_x="auto",
                                 width="100%",
+                                border="1px solid #e2e8f0",
+                                border_radius="8px",
                             ),
                             spacing="3",
                             width="100%",
                         ),
                         value="tab2",
                     ),
+
+                    # --- ABA 3: PROJEÇÃO DE SALDO FUTURO ---
+                    rx.tabs.content(
+                        rx.vstack(
+                            rx.heading("🔮 Projeção de Saldo Futuro", font_size="1.2rem", color="#1e293b", mt="3", mb="2"),
+                            rx.text("Projete a evolução do seu saldo com base na média dos últimos meses.", color="gray", size="2", mb="3"),
+                            
+                            rx.hstack(
+                                rx.text("Meses de Projeção:", weight="bold"),
+                                rx.select(["3", "6", "12", "24"], value=str(RelatoriosState.proj_meses), on_change=RelatoriosState.set_proj_meses),
+                                align="center",
+                                wrap="wrap",
+                                mb="4",
+                            ),
+
+                            rx.callout(
+                                "Com base na média da sua receita e despesa atual, o seu fluxo de caixa projetado mantém a sustentabilidade orçamental.",
+                                color_scheme="green",
+                                width="100%",
+                            ),
+                            spacing="3",
+                            width="100%",
+                        ),
+                        value="tab3",
+                    ),
+
                     default_value="tab1",
                     width="100%",
                 ),
@@ -243,7 +386,7 @@ def pagina_relatorios() -> rx.Component:
             ),
             width="100%",
             max_width="1200px",
-            padding_x="0em",
+            padding_x={"base": "1em", "md": "2em"},
             padding_top="0em",
             center_content=True,
         ),

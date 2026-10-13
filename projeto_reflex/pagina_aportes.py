@@ -585,7 +585,6 @@ def pagina_aportes() -> rx.Component:
                             rx.callout(
                                 "📌 Dica de Ouro: Dividir os aportes entre 2 ou 3 instituições diferentes (por exemplo, Banco Itaú, Nomad e Sofisa) protege seu patrimônio, garante taxas competitivas e mantém o valor protegido.",
                                 color_scheme="blue",
-                                icon="info",
                                 width="100%",
                                 mb="6",
                             ),

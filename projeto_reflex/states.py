@@ -309,16 +309,25 @@ class FinanceState(rx.State):
 
             self.novo_credor = ""
             self.novo_valor_total = ""
-            self.novo_total_parcelas = ""
+            self.novo_total_parcelas = "1"
             self.novo_valor_parcela = ""
-            self.novo_dia_vencimento = ""
+            self.novo_dia_vencimento = "15"
 
             return rx.window_alert("Dívida cadastrada com sucesso!")
         except Exception as e:
             return rx.window_alert(f"Erro ao salvar dívida: {e}")
 
     def selecionar_divida(self, id_str: str):
+        if not id_str:
+            self.id_selecionado = 0
+            return
         try:
+            # Tratamento robusto para extrair ID de strings formatadas
+            if "|" in id_str:
+                id_str = id_str.split("|")[0].replace("ID:", "").strip()
+            elif "-" in id_str:
+                id_str = id_str.split("-")[0].strip()
+            
             self.id_selecionado = int(id_str)
             conexao = database.obter_conexao()
             df = pd.read_sql_query("SELECT * FROM dividas WHERE id = %s", conexao, params=(self.id_selecionado,))
@@ -326,12 +335,12 @@ class FinanceState(rx.State):
 
             if not df.empty:
                 row = df.iloc[0]
-                self.edit_credor = str(row["credor"])
-                self.edit_valor_total = str(row["valor_total"])
-                self.edit_total_parcelas = str(row["total_parcelas"])
-                self.edit_valor_parcela = str(row["valor_parcela"])
-                self.edit_dia_vencimento = str(row["dia_vencimento"])
-                self.edit_status = str(row["status"])
+                self.edit_credor = str(row["credor"] or "")
+                self.edit_valor_total = str(row["valor_total"] or "0.0")
+                self.edit_total_parcelas = str(row["total_parcelas"] or "1")
+                self.edit_valor_parcela = str(row["valor_parcela"] or "0.0")
+                self.edit_dia_vencimento = str(row["dia_vencimento"] or "15")
+                self.edit_status = str(row["status"] or "Pendente")
         except Exception as e:
             print(f"Erro ao selecionar dívida: {e}")
 

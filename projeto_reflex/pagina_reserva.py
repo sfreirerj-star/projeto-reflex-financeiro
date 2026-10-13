@@ -119,11 +119,11 @@ def pagina_reserva() -> rx.Component:
         barra_navegacao(),
         rx.container(
             rx.vstack(
-                rx.heading("💡 Consultoria Inteligente & Diagnóstico Financeiro", font_size="1.5rem", color="#1e293b", margin_top="15px", margin_bottom="2px"),
+                rx.heading("💡 Consultoria Inteligente & Diagnóstico Financeiro", font_size={"base": "1.2rem", "md": "1.5rem"}, color="#1e293b", margin_top="15px", margin_bottom="2px"),
                 rx.text("Análise automática da sua saúde financeira com base nos ganhos, compromissos e dívidas ativas.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
                 rx.divider(mb="4"),
 
-                # Filtro de Competência
+                # Filtro de Competência Responsivo
                 rx.hstack(
                     rx.text("Mês/Ano de Referência:", weight="bold"),
                     rx.select(
@@ -132,19 +132,20 @@ def pagina_reserva() -> rx.Component:
                         on_change=DiagnosticoState.set_competencia_selecionada,
                     ),
                     align="center",
+                    wrap="wrap",
                     mb="4",
                 ),
 
                 rx.divider(mb="4"),
 
-                # Métricas Atuais
+                # Métricas Atuais (Grid Responsiva: 1 coluna no telemóvel, 2 em tablets e 4 no desktop)
                 rx.heading("📊 Seus Indicadores Atuais", font_size="1.2rem", color="#1e293b", mb="3"),
                 rx.grid(
                     rx.card(rx.vstack(rx.text("🟢 Total de Ganhos", weight="bold"), rx.text(DiagnosticoState.fmt_receitas, color="green"))),
                     rx.card(rx.vstack(rx.text("🔴 Total de Compromissos", weight="bold"), rx.text(DiagnosticoState.fmt_despesas, color="red"))),
                     rx.card(rx.vstack(rx.text("⚖️ Saldo Livre", weight="bold"), rx.text(DiagnosticoState.fmt_saldo, color="blue"))),
                     rx.card(rx.vstack(rx.text("🩺 Status da Saúde", weight="bold"), rx.text(DiagnosticoState.status_saude, weight="bold"))),
-                    columns="4",
+                    columns={"base": "1", "sm": "2", "md": "4"},
                     spacing="4",
                     width="100%",
                     mb="6",
@@ -195,7 +196,7 @@ def pagina_reserva() -> rx.Component:
             ),
             width="100%",
             max_width="1200px",
-            padding_x="0em",
+            padding_x={"base": "1em", "md": "2em"},
             padding_top="0em",
             center_content=True,
         ),

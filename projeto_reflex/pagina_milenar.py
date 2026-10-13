@@ -58,7 +58,7 @@ def pagina_milenar() -> rx.Component:
         rx.container(
             rx.vstack(
                 # Título e Descrição
-                rx.heading("📜 Estratégia de Alocação Milenar (Talmude)", size="7", margin_bottom="2"),
+                rx.heading("📜 Estratégia de Alocação Milenar (Talmude)", size={"base": "6", "md": "7"}, margin_bottom="2"),
                 rx.text(
                     "Aplicação prática dos conceitos de Tsedacá e da Regra dos Três Terços usando seus dados reais.",
                     color="gray",
@@ -68,7 +68,7 @@ def pagina_milenar() -> rx.Component:
                 # --- SEÇÃO EDUCATIVA (EXPANDER / ACCORDION) ---
                 rx.accordion.root(
                     rx.accordion.item(
-                        header=rx.heading("📖 Clique aqui para entender a Origem e a Filosofia da Riqueza Milenar", size="3"),
+                        header=rx.heading("📖 Clique aqui para entender a Origem e a Filosofia da Riqueza Milenar", size={"base": "2", "md": "3"}, weight="bold"),
                         content=rx.vstack(
                             rx.markdown("""
                             ### A Regra dos Três Terços do Talmude
@@ -93,7 +93,7 @@ def pagina_milenar() -> rx.Component:
                             * **A Regra dos 10% a 20%:** Destinar uma parte dos ganhos é uma prática de justiça e equilíbrio social.
                             """),
                             spacing="2",
-                            padding="4"
+                            padding={"base": "2", "md": "4"}
                         )
                     ),
                     width="100%",
@@ -107,30 +107,31 @@ def pagina_milenar() -> rx.Component:
                 # --- RESUMO DA COMPETÊNCIA (MÉTRICAS) ---
                 rx.heading(f"📱 Resumo da Competência: {MilenarState.competencia}", size="4", margin_bottom="3"),
                 
+                # Gred responsiva: 1 coluna no telemóvel, 3 colunas no desktop
                 rx.grid(
                     rx.card(
                         rx.vstack(
                             rx.text("Entradas", color="gray", size="2"),
-                            rx.text(MilenarState.entradas_fmt, size="5", weight="bold", color="green"),
+                            rx.text(MilenarState.entradas_fmt, size={"base": "4", "md": "5"}, weight="bold", color="green"),
                         )
                     ),
                     rx.card(
                         rx.vstack(
                             rx.text("Gastos Comuns", color="gray", size="2"),
-                            rx.text(MilenarState.gastos_fmt, size="5", weight="bold", color="red"),
+                            rx.text(MilenarState.gastos_fmt, size={"base": "4", "md": "5"}, weight="bold", color="red"),
                         )
                     ),
                     rx.card(
                         rx.vstack(
                             rx.text("Saldo Livre", color="gray", size="2"),
-                            rx.text(MilenarState.saldo_fmt, size="5", weight="bold", color="blue"),
+                            rx.text(MilenarState.saldo_fmt, size={"base": "4", "md": "5"}, weight="bold", color="blue"),
                             rx.badge(
                                 rx.cond(MilenarState.saldo_remanescente >= 0, "No Azul 💙", "No Vermelho 🔴"),
                                 color_scheme=rx.cond(MilenarState.saldo_remanescente >= 0, "blue", "red")
                             )
                         )
                     ),
-                    columns="3",
+                    columns={"base": "1", "sm": "2", "md": "3"},
                     spacing="4",
                     width="100%",
                     margin_bottom="6"
@@ -143,10 +144,9 @@ def pagina_milenar() -> rx.Component:
                         # Alerta de Tsedacá
                         rx.callout(
                             rx.vstack(
-                                rx.text(f"🕊️ Tsedacá (Justiça Social - 10%): {MilenarState.tsedaca_fmt}", weight="bold", size="4"),
+                                rx.text(f"🕊️ Tsedacá (Justiça Social - 10%): {MilenarState.tsedaca_fmt}", weight="bold", size={"base": "3", "md": "4"}),
                                 rx.text("Destine este valor para fazer o bem, apoiar projetos sociais ou ajudar na capacitação profissional de terceiros.", size="2")
                             ),
-                            icon="heart",
                             color_scheme="amber",
                             width="100%",
                             margin_bottom="4"
@@ -154,12 +154,12 @@ def pagina_milenar() -> rx.Component:
 
                         rx.heading("🎯 Divisão Estratégica dos Três Terços (Talmude)", size="4", margin_y="3"),
 
-                        # 3 Colunas dos Terços
+                        # 3 Colunas dos Terços (Responsiva: 1 coluna no mobile, 3 no desktop)
                         rx.grid(
                             rx.card(
                                 rx.vstack(
                                     rx.text("🛡️ 1/3 em Terras", weight="bold", size="3"),
-                                    rx.text(MilenarState.um_terco_fmt, size="6", weight="bold", color="blue"),
+                                    rx.text(MilenarState.um_terco_fmt, size={"base": "5", "md": "6"}, weight="bold", color="blue"),
                                     rx.text("Foco: Segurança e Preservação", weight="bold", size="2"),
                                     rx.text("Sugestão: Fundos Imobiliários de Tijolo, Imóveis ou Renda Fixa IPCA+.", size="2", color="gray")
                                 ),
@@ -168,7 +168,7 @@ def pagina_milenar() -> rx.Component:
                             rx.card(
                                 rx.vstack(
                                     rx.text("📈 1/3 em Negócios", weight="bold", size="3"),
-                                    rx.text(MilenarState.um_terco_fmt, size="6", weight="bold", color="green"),
+                                    rx.text(MilenarState.um_terco_fmt, size={"base": "5", "md": "6"}, weight="bold", color="green"),
                                     rx.text("Foco: Multiplicação e Crescimento", weight="bold", size="2"),
                                     rx.text("Sugestão: Ações, novos projetos geradores de receita ou capacitação pessoal.", size="2", color="gray")
                                 ),
@@ -177,13 +177,13 @@ def pagina_milenar() -> rx.Component:
                             rx.card(
                                 rx.vstack(
                                     rx.text("💰 1/3 em Mãos", weight="bold", size="3"),
-                                    rx.text(MilenarState.um_terco_fmt, size="6", weight="bold", color="orange"),
+                                    rx.text(MilenarState.um_terco_fmt, size={"base": "5", "md": "6"}, weight="bold", color="orange"),
                                     rx.text("Foco: Liquidez e Oportunidade", weight="bold", size="2"),
                                     rx.text("Sugestão: Tesouro Selic ou CDB 100% CDI com liquidez diária.", size="2", color="gray")
                                 ),
                                 border_top="4px solid #f59e0b"
                             ),
-                            columns="3",
+                            columns={"base": "1", "md": "3"},
                             spacing="4",
                             width="100%",
                             margin_bottom="6"
@@ -193,7 +193,6 @@ def pagina_milenar() -> rx.Component:
                     ),
                     rx.callout(
                         "O saldo remanescente em conta precisa ser positivo para aplicar o modelo milenar de investimentos.",
-                        icon="alert_triangle",
                         color_scheme="red",
                         width="100%"
                     )
@@ -204,8 +203,8 @@ def pagina_milenar() -> rx.Component:
                 align="start",
                 spacing="4"
             ),
-            padding_x="2em",
-            padding_y="2em",
+            padding_x={"base": "1em", "md": "2em"},
+            padding_y={"base": "1em", "md": "2em"},
             center_content=True,
             width="100%"
         ),

@@ -8,16 +8,16 @@ def pagina_investimentos() -> rx.Component:
         barra_navegacao(),
         rx.container(
             rx.vstack(
-                rx.heading("Orientação de Investimentos", font_size="1.5rem", color="#1e293b", margin_top="15px", margin_bottom="2px"),
+                rx.heading("Orientação de Investimentos", font_size={"base": "1.3rem", "md": "1.5rem"}, color="#1e293b", margin_top="15px", margin_bottom="2px"),
                 rx.text("Acompanhamento de alocação de ativos e estratégias de investimento.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
                 rx.divider(mb="4"),
                 
-                # Card de Resumo de Investimentos
+                # Card de Resumo de Investimentos Responsivo
                 rx.hstack(
                     rx.card(
                         rx.vstack(
                             rx.text("Total Aplicado / Investido", font_size="sm", color="gray.500"),
-                            rx.heading(f"R$ {FinanceState.total_aportado:,.2f}", size="6"),
+                            rx.heading(f"R$ {FinanceState.total_aportado:,.2f}", size={"base": "5", "md": "6"}),
                         ),
                         p="4",
                         bg="white",
@@ -30,14 +30,21 @@ def pagina_investimentos() -> rx.Component:
                     mb="6",
                 ),
 
-                # Tabela de Lançamentos de Investimento
+                # Tabela de Lançamentos de Investimento com Scroll Horizontal para Mobile
                 rx.heading("Histórico de Aportes e Ativos", font_size="1.2rem", color="#1e293b", mb="3"),
-                rx.data_table(
-                    data=FinanceState.df_aportes,
-                    pagination=True,
-                    search=True,
-                    sort=True,
+                rx.box(
+                    rx.data_table(
+                        data=FinanceState.df_aportes,
+                        pagination=True,
+                        search=True,
+                        sort=True,
+                        width="100%",
+                    ),
+                    overflow_x="auto",
                     width="100%",
+                    border="1px solid #e2e8f0",
+                    border_radius="8px",
+                    mb="6",
                 ),
                 
                 spacing="4",
@@ -46,7 +53,7 @@ def pagina_investimentos() -> rx.Component:
             ),
             width="100%",
             max_width="1200px",
-            padding_x="0em",
+            padding_x={"base": "1em", "md": "2em"},
             padding_top="0em",
             center_content=True,
         ),

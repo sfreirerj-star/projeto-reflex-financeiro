@@ -5,39 +5,11 @@ from .navegacao import barra_navegacao
 @rx.page(route="/dividendos", title="Dividendos e Simuladores")
 def pagina_dividendos() -> rx.Component:
     
-    # Dados para a tabela de fluxo
-    dados_tabela = [
-        {
-            "Ativo / ETF": "SCHD",
-            "Tipo de Ativo": "ETF de Dividendos Qualitativos",
-            "Frequência": "Trimestral",
-            "Meses de Pagamento Padrão": "Março, Junho, Setembro, Dezembro",
-        },
-        {
-            "Ativo / ETF": "VYM",
-            "Tipo de Ativo": "ETF de Alto Rendimento (Yield)",
-            "Frequência": "Trimestral",
-            "Meses de Pagamento Padrão": "Março, Junho, Setembro, Dezembro",
-        },
-        {
-            "Ativo / ETF": "Realty Income (O)",
-            "Tipo de Ativo": "REIT (Imobiliário Americano)",
-            "Frequência": "Mensal",
-            "Meses de Pagamento Padrão": "Todos os meses do ano",
-        },
-        {
-            "Ativo / ETF": "Coca-Cola (KO)",
-            "Tipo de Ativo": "Ação (Dividend King)",
-            "Frequência": "Trimestral",
-            "Meses de Pagamento Padrão": "Abril, Julho, Outubro, Dezembro",
-        },
-    ]
-
     return rx.box(
         barra_navegacao(),
         rx.container(
             rx.vstack(
-                rx.heading("🌐 Estratégia de Dividendos Globais em Dólar", size="7", mb="3"),
+                rx.heading("🌐 Estratégia de Dividendos Globais em Dólar", size={"base": "6", "md": "7"}, mb="3"),
                 rx.text(
                     "Esta página integra o seu objetivo de geração de renda passiva em moeda forte ao seu planejamento financeiro atual, respeitando a sua fase de consolidação da Reserva de Emergência.",
                     color="gray",
@@ -46,7 +18,7 @@ def pagina_dividendos() -> rx.Component:
                 rx.divider(mb="6"),
 
                 # 1. Pré-Requisitos do Projeto
-                rx.heading("🚦 1. Pré-Requisitos do Projeto (Sinal Verde)", size="5", mb="3"),
+                rx.heading("🚦 1. Pré-Requisitos do Projeto (Sinal Verde)", size={"base": "4", "md": "5"}, mb="3"),
                 rx.text("Antes de aportar o primeiro dólar focado em dividendos, valide os seguintes marcos no seu controle principal:", color="gray", mb="4"),
                 
                 rx.grid(
@@ -60,12 +32,12 @@ def pagina_dividendos() -> rx.Component:
                         rx.text("O dinheiro enviado para plataformas globais (como Avenue ou Nomad) deve ser aquele que você não precisará resgatar nos próximos 3 a 5 anos.", size="2"),
                         padding="4", background_color="#fef3c7", border_radius="8px", border_left="4px solid #d97706"
                     ),
-                    columns="2", gap="4", width="100%", mb="6",
+                    columns={"base": "1", "md": "2"}, gap="4", width="100%", mb="6",
                 ),
                 rx.divider(mb="6"),
 
                 # 2. Como Funciona a Renda Passiva nos EUA
-                rx.heading("🇺🇸 2. Como Funciona a Renda Passiva nos EUA?", size="5", mb="3"),
+                rx.heading("🇺🇸 2. Como Funciona a Renda Passiva nos EUA?", size={"base": "4", "md": "5"}, mb="3"),
                 rx.text("Diferente do Brasil, onde a maioria das ações paga dividendos semestrais ou anuais, o mercado americano possui características únicas que facilitam a previsibilidade da renda:", color="gray", mb="4"),
                 
                 rx.grid(
@@ -79,12 +51,12 @@ def pagina_dividendos() -> rx.Component:
                         rx.text("Os EUA retêm automaticamente 30% de imposto de renda sobre o dividendo distribuído a estrangeiros. O valor líquido já cai pronto para uso ou reinvestimento.", size="2"),
                         padding="4", background_color="#f8fafc", border_radius="8px"
                     ),
-                    columns="2", gap="4", width="100%", mb="6",
+                    columns={"base": "1", "md": "2"}, gap="4", width="100%", mb="6",
                 ),
                 rx.divider(mb="6"),
 
                 # 3. Pilares de Ativos (Com Abas)
-                rx.heading("🏗️ 3. Pilares de Ativos para Renda em Dólar", size="5", mb="3"),
+                rx.heading("🏗️ 3. Pilares de Ativos para Renda em Dólar", size={"base": "4", "md": "5"}, mb="3"),
                 rx.text("Para montar uma carteira focada em renda com a segurança necessária, o estudo deve focar em três classes de ativos:", color="gray", mb="4"),
 
                 rx.tabs.root(
@@ -129,53 +101,59 @@ def pagina_dividendos() -> rx.Component:
                 ),
                 rx.divider(mb="6"),
 
-                # 4. Tabela de Simulação de Fluxo de Dividendos
-                rx.heading("📉 4. Tabela de Simulação de Fluxo de Dividendos", size="5", mb="3"),
+                # 4. Tabela de Simulação de Fluxo de Dividendos com Scroll Horizontal para Mobile
+                rx.heading("📉 4. Tabela de Simulação de Fluxo de Dividendos", size={"base": "4", "md": "5"}, mb="3"),
                 rx.text("Organize o cronograma de estudos combinando ativos com diferentes frequências de pagamento para preencher o seu calendário:", color="gray", mb="4"),
 
-                rx.table.root(
-                    rx.table.header(
-                        rx.table.row(
-                            rx.table.column_header_cell("Ativo / ETF"),
-                            rx.table.column_header_cell("Tipo de Ativo"),
-                            rx.table.column_header_cell("Frequência"),
-                            rx.table.column_header_cell("Meses de Pagamento Padrão"),
+                rx.box(
+                    rx.table.root(
+                        rx.table.header(
+                            rx.table.row(
+                                rx.table.column_header_cell("Ativo / ETF"),
+                                rx.table.column_header_cell("Tipo de Ativo"),
+                                rx.table.column_header_cell("Frequência"),
+                                rx.table.column_header_cell("Meses de Pagamento Padrão"),
+                            ),
                         ),
+                        rx.table.body(
+                            rx.table.row(
+                                rx.table.cell("SCHD"),
+                                rx.table.cell("ETF de Dividendos Qualitativos"),
+                                rx.table.cell("Trimestral"),
+                                rx.table.cell("Março, Junho, Setembro, Dezembro"),
+                            ),
+                            rx.table.row(
+                                rx.table.cell("VYM"),
+                                rx.table.cell("ETF de Alto Rendimento (Yield)"),
+                                rx.table.cell("Trimestral"),
+                                rx.table.cell("Março, Junho, Setembro, Dezembro"),
+                            ),
+                            rx.table.row(
+                                rx.table.cell("Realty Income (O)"),
+                                rx.table.cell("REIT (Imobiliário Americano)"),
+                                rx.table.cell("Mensal"),
+                                rx.table.cell("Todos os meses do ano"),
+                            ),
+                            rx.table.row(
+                                rx.table.cell("Coca-Cola (KO)"),
+                                rx.table.cell("Ação (Dividend King)"),
+                                rx.table.cell("Trimestral"),
+                                rx.table.cell("Abril, Julho, Outubro, Dezembro"),
+                            ),
+                        ),
+                        width="100%",
+                        variant="surface",
                     ),
-                    rx.table.body(
-                        rx.table.row(
-                            rx.table.cell("SCHD"),
-                            rx.table.cell("ETF de Dividendos Qualitativos"),
-                            rx.table.cell("Trimestral"),
-                            rx.table.cell("Março, Junho, Setembro, Dezembro"),
-                        ),
-                        rx.table.row(
-                            rx.table.cell("VYM"),
-                            rx.table.cell("ETF de Alto Rendimento (Yield)"),
-                            rx.table.cell("Trimestral"),
-                            rx.table.cell("Março, Junho, Setembro, Dezembro"),
-                        ),
-                        rx.table.row(
-                            rx.table.cell("Realty Income (O)"),
-                            rx.table.cell("REIT (Imobiliário Americano)"),
-                            rx.table.cell("Mensal"),
-                            rx.table.cell("Todos os meses do ano"),
-                        ),
-                        rx.table.row(
-                            rx.table.cell("Coca-Cola (KO)"),
-                            rx.table.cell("Ação (Dividend King)"),
-                            rx.table.cell("Trimestral"),
-                            rx.table.cell("Abril, Julho, Outubro, Dezembro"),
-                        ),
-                    ),
+                    overflow_x="auto",
                     width="100%",
-                    variant="surface",
+                    border="1px solid #e2e8f0",
+                    border_radius="8px",
                     mb="6",
                 ),
                 rx.divider(mb="6"),
 
                 # 5. Próximos Passos
-                rx.heading("📝 5. Próximos Passos para o seu Planejamento", size="5", mb="3"),
+                rx.heading("📝 5. Próximos Passos para o seu Planejamento", size={"base": "4", "md": "5"}, mb="3"),
                 rx.ordered_list(
                     rx.list_item("Defina a sua Meta de Renda Passiva: Estabeleça o primeiro marco inicial (ex: Receber US$ 10 por mês, evoluindo progressivamente)."),
                     rx.list_item("Método de Aporte Constante: Separe um percentual planejado do orçamento após a consolidação da sua base no Brasil para iniciar a internacionalização."),
@@ -190,7 +168,12 @@ def pagina_dividendos() -> rx.Component:
                 ),
                 
                 width="100%",
-                padding="2em",
-            )
+                max_width="1200px",
+            ),
+            padding_x={"base": "1em", "md": "2em"},
+            padding_y={"base": "1em", "md": "2em"},
+            center_content=True,
+            width="100%",
         ),
+        width="100%",
     )

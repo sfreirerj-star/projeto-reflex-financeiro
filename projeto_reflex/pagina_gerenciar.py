@@ -178,11 +178,11 @@ def pagina_gerenciar() -> rx.Component:
         barra_navegacao(),
         rx.container(
             rx.vstack(
-                rx.heading("✏️ Gerenciar, Editar ou Excluir Lançamentos", font_size="1.5rem", color="#1e293b", margin_top="15px", margin_bottom="2px"),
+                rx.heading("✏️ Gerenciar, Editar ou Excluir Lançamentos", font_size={"base": "1.3rem", "md": "1.5rem"}, color="#1e293b", margin_top="15px", margin_bottom="2px"),
                 rx.text("Gerencie e corrija os seus lançamentos manuais diretamente.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
                 rx.divider(mb="4"),
 
-                # Filtro de Competência
+                # Filtro de Competência Responsivo
                 rx.hstack(
                     rx.text("Mês/Ano de Referência:", weight="bold"),
                     rx.select(
@@ -191,6 +191,7 @@ def pagina_gerenciar() -> rx.Component:
                         on_change=GerenciarState.set_competencia_selecionada,
                     ),
                     align="center",
+                    wrap="wrap",
                     mb="4",
                 ),
 
@@ -198,7 +199,7 @@ def pagina_gerenciar() -> rx.Component:
 
                 # Seleção de lançamento para editar
                 rx.heading("🔄 Selecionar Lançamento para Edição ou Correção", font_size="1.2rem", color="#1e293b", mb="3"),
-                rx.hstack(
+                rx.flex(
                     rx.select(
                         GerenciarState.itens_select_lancamentos,
                         placeholder="Selecione um lançamento...",
@@ -209,8 +210,10 @@ def pagina_gerenciar() -> rx.Component:
                         GerenciarState.id_selecionado > 0,
                         rx.button("Cancelar", on_click=GerenciarState.cancelar_selecao, color_scheme="gray", variant="soft"),
                     ),
+                    direction={"base": "column", "sm": "row"},
                     spacing="3",
                     align="center",
+                    width="100%",
                     mb="4",
                 ),
 
@@ -254,14 +257,16 @@ def pagina_gerenciar() -> rx.Component:
                             width="100%",
                         ),
 
-                        rx.hstack(
+                        rx.flex(
                             rx.button("Salvar Alterações", on_click=GerenciarState.salvar_alteracoes, color_scheme="green"),
                             rx.button("Excluir Lançamento", on_click=GerenciarState.excluir_lancamento, color_scheme="red"),
+                            direction={"base": "column", "sm": "row"},
                             spacing="4",
+                            width="100%",
                             mt="3",
                         ),
                         spacing="3",
-                        padding="24px",
+                        padding={"base": "16px", "md": "24px"},
                         border="1px solid #e2e8f0",
                         border_radius="10px",
                         bg="#fafafa",
@@ -272,7 +277,7 @@ def pagina_gerenciar() -> rx.Component:
 
                 rx.divider(mb="4"),
 
-                # Tabela Restrita a aprox. 6 linhas visíveis com Barra de Rolagem
+                # Tabela Restrita com Rolagem Vertical e Horizontal para Mobile
                 rx.heading("📋 Lançamentos do Mês Selecionado", font_size="1.2rem", color="#1e293b", mb="3"),
                 rx.cond(
                     GerenciarState.lista_lancamentos_mes.length() > 0,
@@ -307,6 +312,7 @@ def pagina_gerenciar() -> rx.Component:
                         ),
                         max_height="260px",
                         overflow_y="auto",
+                        overflow_x="auto",
                         width="100%",
                         border="1px solid #e2e8f0",
                         border_radius="8px",
@@ -320,7 +326,7 @@ def pagina_gerenciar() -> rx.Component:
             ),
             width="100%",
             max_width="1200px",
-            padding_x="0em",
+            padding_x={"base": "1em", "md": "2em"},
             padding_top="0em",
             center_content=True,
         ),

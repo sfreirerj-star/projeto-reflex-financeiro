@@ -63,7 +63,6 @@ class LancamentoState(rx.State):
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
-            # ORDENADO POR ID DESC (Mais recente primeiro)
             df = pd.read_sql_query("SELECT id, data, tipo, categoria, descricao, valor FROM lancamentos ORDER BY id DESC", conexao)
             conexao.close()
 
@@ -100,11 +99,11 @@ def pagina_lancamentos() -> rx.Component:
         barra_navegacao(),
         rx.container(
             rx.vstack(
-                rx.heading("📝 Novo Lançamento & Registro de Caixa", font_size="1.7rem", color="#1e293b", margin_top="15px", margin_bottom="2px"),
+                rx.heading("📝 Novo Lançamento & Registro de Caixa", font_size={"base": "1.3rem", "md": "1.7rem"}, color="#1e293b", margin_top="15px", margin_bottom="2px"),
                 rx.text("Registre as suas receitas e despesas do dia a dia com abatimento automático dos aportes de investimentos.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
                 rx.divider(mb="4"),
                 
-                # Form em Grid Simétrico e Limpo
+                # Formulário Responsivo (Grid: 1 coluna no telemóvel, 3 no desktop)
                 rx.vstack(
                     rx.grid(
                         rx.vstack(
@@ -122,7 +121,7 @@ def pagina_lancamentos() -> rx.Component:
                             rx.input(value=LancamentoState.descricao, on_change=LancamentoState.set_descricao, placeholder="Ex: Supermercado...", width="100%"),
                             spacing="1",
                         ),
-                        columns="3",
+                        columns={"base": "1", "md": "3"},
                         gap="4",
                         width="100%",
                     ),
@@ -142,14 +141,14 @@ def pagina_lancamentos() -> rx.Component:
                             rx.button("Salvar Lançamento", on_click=LancamentoState.salvar_lancamento, color_scheme="blue", width="100%"),
                             width="100%",
                         ),
-                        columns="3",
+                        columns={"base": "1", "md": "3"},
                         gap="4",
                         width="100%",
                         align_items="end",
                         mt="4",
                     ),
 
-                    padding="24px",
+                    padding={"base": "16px", "md": "24px"},
                     border="1px solid #e2e8f0",
                     border_radius="10px",
                     bg="#ffffff",
@@ -160,7 +159,7 @@ def pagina_lancamentos() -> rx.Component:
 
                 rx.divider(mb="4"),
 
-                # Histórico com altura limitada (~6 linhas) e Barra de Rolagem
+                # Histórico com altura limitada e Rolagem Vertical/Horizontal
                 rx.heading("📋 Histórico de Lançamentos da Competência Atual", font_size="1.2rem", color="#1e293b", mb="3"),
                 rx.cond(
                     LancamentoState.lista_lancamentos_mes.length() > 0,
@@ -193,8 +192,9 @@ def pagina_lancamentos() -> rx.Component:
                             size="3",
                             width="100%",
                         ),
-                        max_height="260px",  # Exibe aprox. 6 linhas e ativa a barra de rolagem vertical
+                        max_height="260px",
                         overflow_y="auto",
+                        overflow_x="auto",
                         width="100%",
                         border="1px solid #e2e8f0",
                         border_radius="8px",
@@ -207,7 +207,7 @@ def pagina_lancamentos() -> rx.Component:
             ),
             width="100%",
             max_width="1200px",
-            padding_x="0em",
+            padding_x={"base": "1em", "md": "2em"},
             padding_top="0em",
             center_content=True,
         ),
