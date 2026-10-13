@@ -107,7 +107,7 @@ class RaioXDividasState(rx.State):
         return resultado
 
 
-@rx.page(route="/raio-x-dividas", title="Raio-X de Dívidas")
+@rx.page(route="/dividas", title="Raio-X de Dívidas")
 def pagina_raio_x_dividas() -> rx.Component:
     from .navegacao import barra_navegacao
 
