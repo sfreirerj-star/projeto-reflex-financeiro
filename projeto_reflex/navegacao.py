@@ -43,7 +43,7 @@ def barra_navegacao() -> rx.Component:
                 menu_item("Novo Lançamento", "/lancamentos"),
                 menu_item("Gerenciar", "/gerenciar"),
                 menu_item("Raio-X Dívidas", "/dividas"),
-                menu_item("Desafio", "/milenar"),
+                menu_item("Desafio", "/desafio"),
                 menu_item("Investimentos", "/investimentos"),
                 menu_item("Relatórios", "/relatorios"),
                 menu_item("Reserva", "/reserva"),
