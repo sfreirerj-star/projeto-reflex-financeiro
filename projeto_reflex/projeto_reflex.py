@@ -6,6 +6,7 @@ from .pagina_raio_x_dividas import pagina_raio_x_dividas
 from .pagina_gerenciar import pagina_gerenciar
 from .pagina_investimentos import pagina_investimentos
 from .pagina_aportes import pagina_aportes
+from .pagina_desafio import pagina_desafio
 from .pagina_dividendos import pagina_dividendos
 from .pagina_relatorios import pagina_relatorios
 from .pagina_reserva import pagina_reserva
@@ -98,4 +99,5 @@ def pagina_dashboard() -> rx.Component:
 app = rx.App()
 app.add_page(pagina_dashboard, route="/")
 app.add_page(pagina_aportes, route="/aportes")
+app.add_page(pagina_desafio, route="/desafio", title="Desafio Reserva & Simulador")
 app.add_page(pagina_milenar, route="/milenar", title="Alocação Milenar - Talmude")
