@@ -92,6 +92,8 @@ class DesafioState(rx.State):
             database.inicializar_banco()
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
+            
+            # Garantir tabelas
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS desafio_aportes (
                     id SERIAL PRIMARY KEY,
@@ -112,9 +114,25 @@ class DesafioState(rx.State):
             conexao.commit()
             cursor.close()
 
-            df = pd.read_sql_query("SELECT id, data, valor, local_aplicacao FROM desafio_aportes ORDER BY id DESC", conexao)
+            # Busca aportes registrados na tabela especifica do desafio
+            df_desafio = pd.read_sql_query(
+                "SELECT id, data, valor, local_aplicacao FROM desafio_aportes", conexao
+            )
+
+            # Busca aportes/investimentos da tabela geral de lançamentos do sistema
+            df_geral = pd.read_sql_query(
+                "SELECT id, data, valor, categoria AS local_aplicacao FROM lancamentos WHERE tipo IN ('Aporte', 'Investimento')",
+                conexao
+            )
+
             conexao.close()
-            return df
+
+            # Une ambos os DataFrames para contabilizar todos os aportes
+            df_total = pd.concat([df_desafio, df_geral], ignore_index=True)
+            if not df_total.empty:
+                df_total = df_total.sort_values(by="id", ascending=False)
+
+            return df_total
         except Exception:
             return pd.DataFrame(columns=["id", "data", "valor", "local_aplicacao"])
 
