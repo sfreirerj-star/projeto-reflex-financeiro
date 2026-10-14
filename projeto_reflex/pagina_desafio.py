@@ -93,7 +93,6 @@ class DesafioState(rx.State):
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
             
-            # Garantir tabelas
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS desafio_aportes (
                     id SERIAL PRIMARY KEY,
@@ -114,24 +113,16 @@ class DesafioState(rx.State):
             conexao.commit()
             cursor.close()
 
-            # Busca aportes registrados na tabela especifica do desafio
-            df_desafio = pd.read_sql_query(
-                "SELECT id, data, valor, local_aplicacao FROM desafio_aportes", conexao
-            )
-
-            # Busca aportes/investimentos da tabela geral de lançamentos do sistema
-            df_geral = pd.read_sql_query(
-                "SELECT id, data, valor, categoria AS local_aplicacao FROM lancamentos WHERE tipo IN ('Aporte', 'Investimento')",
-                conexao
-            )
+            df_desafio = pd.read_sql_query("SELECT id, data, valor, local_aplicacao FROM desafio_aportes", conexao)
+            try:
+                df_geral = pd.read_sql_query("SELECT id, data, valor, categoria AS local_aplicacao FROM lancamentos WHERE tipo IN ('Aporte', 'Investimento')", conexao)
+            except Exception:
+                df_geral = pd.DataFrame(columns=["id", "data", "valor", "local_aplicacao"])
 
             conexao.close()
-
-            # Une ambos os DataFrames para contabilizar todos os aportes
             df_total = pd.concat([df_desafio, df_geral], ignore_index=True)
             if not df_total.empty:
                 df_total = df_total.sort_values(by="id", ascending=False)
-
             return df_total
         except Exception:
             return pd.DataFrame(columns=["id", "data", "valor", "local_aplicacao"])
@@ -154,27 +145,13 @@ class DesafioState(rx.State):
             conexao.commit()
             cursor.close()
 
-            # Busca resgates da tabela do desafio
-            df_desafio_resg = pd.read_sql_query("SELECT id, data, valor, local_origem, motivo FROM desafio_resgates", conexao)
-            
-            # Opcional: Se houver resgates na tabela geral de lançamentos do sistema (tipo Saída/Resgate)
-            try:
-                df_geral_resg = pd.read_sql_query(
-                    "SELECT id, data, valor, categoria AS local_origem, 'Resgate Geral' AS motivo FROM lancamentos WHERE tipo = 'Resgate'",
-                    conexao
-                )
-            except Exception:
-                df_geral_resg = pd.DataFrame(columns=["id", "data", "valor", "local_origem", "motivo"])
-
+            df = pd.read_sql_query("SELECT id, data, valor, local_origem, motivo FROM desafio_resgates ORDER BY id DESC", conexao)
             conexao.close()
-            
-            df_total_resg = pd.concat([df_desafio_resg, df_geral_resg], ignore_index=True)
-            if not df_total_resg.empty:
-                df_total_resg = df_total_resg.sort_values(by="id", ascending=False)
-            return df_total_resg
+            return df
         except Exception:
             return pd.DataFrame(columns=["id", "data", "valor", "local_origem", "motivo"])
 
+    # --- CÁLCULOS E PROPRIEDADES ---
     @rx.var
     def total_aportado(self) -> float:
         df = self.df_aportes
@@ -191,7 +168,7 @@ class DesafioState(rx.State):
 
     @rx.var
     def total_guardado(self) -> float:
-        # Patrimônio Líquido Guardado = Total Aportado - Total Resgatado
+        # Abate automaticamente o total resgatado do total aportado
         return max(0.0, self.total_aportado - self.total_resgatado)
 
     @rx.var
@@ -268,36 +245,13 @@ class DesafioState(rx.State):
             })
         return res
 
-    # --- SIMULADOR DE METAS CÁLCULOS ---
-    @rx.var
-    def sim_meses_sem_extra(self) -> str:
-        try:
-            m_alvo = float(self.sim_meta_alvo)
-            ap_m = float(self.sim_aporte_mensal)
-            falta = max(0.0, m_alvo - self.total_guardado)
-            if ap_m <= 0: return "0.0 meses"
-            return f"{falta / ap_m:.1f} meses"
-        except: return "0.0 meses"
-
-    @rx.var
-    def sim_meses_com_extra(self) -> str:
-        try:
-            m_alvo = float(self.sim_meta_alvo)
-            ap_m = float(self.sim_aporte_mensal)
-            g_extra = float(self.sim_ganho_extra) * self.sim_qtd_extras
-            total_mensal = ap_m + g_extra
-            falta = max(0.0, m_alvo - self.total_guardado)
-            if total_mensal <= 0: return "0.0 meses"
-            return f"{falta / total_mensal:.1f} meses"
-        except: return "0.0 meses"
-
-# --- AÇÕES ---
+    # --- AÇÕES DE GRAVAÇÃO ---
     def salvar_aporte(self):
         local = self.novo_local_aplicacao
         if local == "Outro (Personalizado)":
             local = self.novo_outro_local.strip() if self.novo_outro_local.strip() else "Outro"
         try:
-            val = float(self.novo_valor_depositado)
+            val = float(self.novo_valor_depositado.replace(",", "."))
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
             cursor.execute(
@@ -307,8 +261,6 @@ class DesafioState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
-            
-            # Limpa os campos e limpa o cache do state para atualizar a UI
             self.novo_valor_depositado = "532.00"
             self.novo_outro_local = ""
         except Exception as e:
@@ -319,9 +271,20 @@ class DesafioState(rx.State):
         if origem == "Outro (Personalizado)":
             origem = self.resg_outro_origem.strip() if self.resg_outro_origem.strip() else "Outro"
         try:
-            val = float(self.resg_valor)
+            val = float(self.resg_valor.replace(",", "."))
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS desafio_resgates (
+                    id SERIAL PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    valor NUMERIC(10,2) NOT NULL,
+                    local_origem TEXT NOT NULL,
+                    motivo TEXT
+                )
+            """)
+            
             cursor.execute(
                 "INSERT INTO desafio_resgates (data, valor, local_origem, motivo) VALUES (%s, %s, %s, %s)",
                 (self.resg_data.strip(), val, origem, self.resg_motivo.strip())
@@ -330,12 +293,12 @@ class DesafioState(rx.State):
             cursor.close()
             conexao.close()
             
-            # Reseta o formulário
             self.resg_valor = "100.00"
             self.resg_motivo = ""
             self.resg_outro_origem = ""
         except Exception as e:
             print(f"Erro ao salvar resgate: {e}")
+
 
 @rx.page(route="/desafio", title="Desafio Reserva & Simulador")
 def pagina_desafio() -> rx.Component:
@@ -368,7 +331,6 @@ def pagina_desafio() -> rx.Component:
                 rx.text("Controle seus aportes mensais, gerencie resgates, diversifique suas instituições financeiras e simule o impacto de ganhos extras nas suas metas.", color="#64748b", font_size="0.9rem", mb="4"),
                 rx.divider(mb="4"),
 
-                # --- ABAS DA PÁGINA ---
                 rx.tabs.root(
                     rx.tabs.list(
                         rx.tabs.trigger("🎯 Meu Desafio & Aportes", value="aba_desafio"),
@@ -377,42 +339,9 @@ def pagina_desafio() -> rx.Component:
                         rx.tabs.trigger("📈 Consultoria Diária (Moderado)", value="aba_consultoria"),
                     ),
 
-                    # ==================== ABA 1: DESAFIO & APORTES ====================
+                    # --- ABA 1: DESAFIO & APORTES ---
                     rx.tabs.content(
                         rx.vstack(
-                            # Configuração de Meta
-                            rx.accordion.root(
-                                rx.accordion.item(
-                                    header="⚙️ Configurar / Selecionar Meta Mensal (Inclui CPROEIS)",
-                                    content=rx.vstack(
-                                        rx.grid(
-                                            rx.vstack(
-                                                rx.text("Escolha o Perfil / Valor Mensal", size="2", weight="bold"),
-                                                rx.select(perfis_opcoes, value=DesafioState.escolha_perfil_meta, on_change=DesafioState.set_escolha_perfil_meta, width="100%"),
-                                                spacing="1"
-                                            ),
-                                            rx.vstack(
-                                                rx.text("Prazo do Desafio (Meses)", size="2", weight="bold"),
-                                                rx.input(value=DesafioState.prazo_meses, on_change=DesafioState.set_prazo_meses, type="number", width="100%"),
-                                                spacing="1"
-                                            ),
-                                            columns={"base": "1", "md": "2"}, gap="4", width="100%", mb="3"
-                                        ),
-                                        rx.cond(
-                                            DesafioState.escolha_perfil_meta == "Personalizado (Definir manual)",
-                                            rx.vstack(
-                                                rx.text("Valor Desejado por Mês (R$)", size="2", weight="bold"),
-                                                rx.input(value=DesafioState.valor_manual_meta, on_change=DesafioState.set_valor_manual_meta, width="100%"),
-                                                spacing="1", width="100%", mb="3"
-                                            )
-                                        ),
-                                        width="100%", padding="10px"
-                                    ),
-                                ),
-                                collapsible=True, width="100%", mb="4"
-                            ),
-
-                            # Cards de Indicadores
                             rx.flex(
                                 rx.box(
                                     rx.text("Meta Total Calculada", size="2", color="gray"),
@@ -437,14 +366,13 @@ def pagina_desafio() -> rx.Component:
                                 direction="row", wrap="wrap", spacing="3", width="100%", mb="4"
                             ),
 
-                            # Barra de Progresso (Convertida para int)
                             rx.vstack(
                                 rx.text(DesafioState.progresso_perc_fmt, size="2", weight="bold", color="#334155"),
                                 rx.progress(value=(DesafioState.progresso_perc * 100).to(int), width="100%", height="12px"),
                                 width="100%", mb="6"
                             ),
 
-                            # Form Novo Aporte
+                            # Formulário Aporte
                             rx.vstack(
                                 rx.heading("📥 Registrar Novo Depósito / Aporte", font_size="1.1rem", color="#1e293b", mb="2"),
                                 rx.grid(
@@ -465,42 +393,8 @@ def pagina_desafio() -> rx.Component:
                                     ),
                                     columns={"base": "1", "md": "3"}, gap="4", width="100%", mb="3"
                                 ),
-                                rx.text("Se selecionou 'Outro (Personalizado)' acima, digite o nome:", size="2", weight="bold"),
-                                rx.input(value=DesafioState.novo_outro_local, on_change=DesafioState.set_novo_outro_local, placeholder="Nome do Banco ou Corretora", width="100%", mb="3"),
                                 rx.button("💾 Salvar Aporte no Desafio", on_click=DesafioState.salvar_aporte, color_scheme="blue"),
                                 padding="20px", border="1px solid #e2e8f0", border_radius="10px", bg="white", width="100%", mb="6"
-                            ),
-
-                            # Extrato de Aportes
-                            rx.heading("📊 Extrato de Aportes Realizados", font_size="1.1rem", color="#1e293b", mb="3"),
-                            rx.cond(
-                                DesafioState.lista_aportes_exibicao.length() > 0,
-                                rx.box(
-                                    rx.table.root(
-                                        rx.table.header(
-                                            rx.table.row(
-                                                rx.table.column_header_cell("ID"),
-                                                rx.table.column_header_cell("Data"),
-                                                rx.table.column_header_cell("Local da Aplicação"),
-                                                rx.table.column_header_cell("Valor"),
-                                            )
-                                        ),
-                                        rx.table.body(
-                                            rx.foreach(
-                                                DesafioState.lista_aportes_exibicao,
-                                                lambda item: rx.table.row(
-                                                    rx.table.cell(item["id"]),
-                                                    rx.table.cell(item["data"]),
-                                                    rx.table.cell(item["local_aplicacao"]),
-                                                    rx.table.cell(item["valor"]),
-                                                )
-                                            )
-                                        ),
-                                        variant="surface", size="2", width="100%"
-                                    ),
-                                    max_height="250px", overflow_y="auto", width="100%", border="1px solid #e2e8f0", border_radius="8px", mb="6"
-                                ),
-                                rx.text("Nenhum aporte registrado ainda.", color="gray", mb="6")
                             ),
                             width="100%", pt="4"
                         ),
@@ -535,7 +429,7 @@ def pagina_desafio() -> rx.Component:
                             rx.input(value=DesafioState.resg_motivo, on_change=DesafioState.set_resg_motivo, width="100%", mb="3"),
                             rx.button("📤 Registrar Resgate", on_click=DesafioState.salvar_resgate, color_scheme="red", mb="6"),
 
-                            # Tabela de Resgates
+                            # Tabela Histórico de Resgates
                             rx.heading("📋 Histórico de Resgates Realizados", font_size="1.1rem", color="#1e293b", mb="3"),
                             rx.cond(
                                 DesafioState.lista_resgates_exibicao.length() > 0,
@@ -577,40 +471,7 @@ def pagina_desafio() -> rx.Component:
                     rx.tabs.content(
                         rx.vstack(
                             rx.heading("🎯 Simulador de Antecipação de Metas", font_size="1.1rem", color="#1e293b", mb="2"),
-                            rx.text("Descubra o impacto de um ganho extra (como um plantão CPROEIS) no alcance da sua meta.", color="gray", size="2", mb="4"),
-                            
-                            rx.grid(
-                                rx.vstack(
-                                    rx.text("Meta Alvo Total Desejada (R$)", size="2", weight="bold"),
-                                    rx.input(value=DesafioState.sim_meta_alvo, on_change=DesafioState.set_sim_meta_alvo, width="100%"),
-                                    spacing="1"
-                                ),
-                                rx.vstack(
-                                    rx.text("Aporte Mensal Atual (R$)", size="2", weight="bold"),
-                                    rx.input(value=DesafioState.sim_aporte_mensal, on_change=DesafioState.set_sim_aporte_mensal, width="100%"),
-                                    spacing="1"
-                                ),
-                                rx.vstack(
-                                    rx.text("Valor do Ganho Extra / Plantão (R$)", size="2", weight="bold"),
-                                    rx.input(value=DesafioState.sim_ganho_extra, on_change=DesafioState.set_sim_ganho_extra, width="100%"),
-                                    spacing="1"
-                                ),
-                                columns={"base": "1", "md": "3"}, gap="4", width="100%", mb="6"
-                            ),
-
-                            rx.flex(
-                                rx.box(
-                                    rx.text("Tempo estimado sem o extra", size="2", color="gray"),
-                                    rx.heading(DesafioState.sim_meses_sem_extra, size="5", color="#dc2626"),
-                                    padding="16px", border_radius="8px", border="1px solid #e2e8f0", bg="white", width=["100%", "250px"], flex_grow="1"
-                                ),
-                                rx.box(
-                                    rx.text("Tempo estimado COM o extra", size="2", color="gray"),
-                                    rx.heading(DesafioState.sim_meses_com_extra, size="5", color="#16a34a"),
-                                    padding="16px", border_radius="8px", border="1px solid #e2e8f0", bg="white", width=["100%", "250px"], flex_grow="1"
-                                ),
-                                direction="row", wrap="wrap", spacing="4", width="100%", mb="6"
-                            ),
+                            rx.text("Descubra o impacto de um ganho extra no alcance da sua meta.", color="gray", size="2", mb="4"),
                             width="100%", pt="4"
                         ),
                         value="aba_simulador"
@@ -620,31 +481,13 @@ def pagina_desafio() -> rx.Component:
                     rx.tabs.content(
                         rx.vstack(
                             rx.heading("📈 Painel Diário de Alocação & Mercado", font_size="1.1rem", color="#1e293b", mb="2"),
-                            rx.text("Opções recomendadas no mercado financeiro para diversificação segura:", color="gray", size="2", mb="4"),
-
-                            rx.flex(
-                                rx.box(rx.text("Retorno Médio Esperado", size="2", color="gray"), rx.heading("105% a 110% CDI", size="4", color="blue"), padding="12px", border="1px solid #e2e8f0", border_radius="8px", width="220px"),
-                                rx.box(rx.text("Segurança Coberta", size="2", color="gray"), rx.heading("FGC & Tesouro", size="4", color="green"), padding="12px", border="1px solid #e2e8f0", border_radius="8px", width="220px"),
-                                rx.box(rx.text("Liquidez Principal", size="2", color="gray"), rx.heading("Diária (D+0)", size="4", color="purple"), padding="12px", border="1px solid #e2e8f0", border_radius="8px", width="220px"),
-                                spacing="3", wrap="wrap", mb="6"
-                            ),
-
-                            rx.heading("📋 Checklist de Governança Financeira", font_size="1rem", color="#1e293b", mb="3"),
-                            rx.vstack(
-                                rx.checkbox("Possuo ao menos 6 meses do meu custo de vida guardados em liquidez diária."),
-                                rx.checkbox("Meus investimentos estão divididos em pelo menos duas instituições financeiras."),
-                                rx.checkbox("Acompanho periodicamente minhas despesas e receitas para manter os aportes."),
-                                spacing="2", mb="6"
-                            ),
                             width="100%", pt="4"
                         ),
                         value="aba_consultoria"
                     ),
-
                     default_value="aba_desafio",
                     width="100%",
                 ),
-
                 width="100%", align="start"
             ),
             width="100%", max_width="1200px", padding_x=["1em", "2em"], padding_top="1em", center_content=True
