@@ -141,13 +141,40 @@ class DesafioState(rx.State):
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
-            df = pd.read_sql_query("SELECT id, data, valor, local_origem, motivo FROM desafio_resgates ORDER BY id DESC", conexao)
+            cursor = conexao.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS desafio_resgates (
+                    id SERIAL PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    valor NUMERIC(10,2) NOT NULL,
+                    local_origem TEXT NOT NULL,
+                    motivo TEXT
+                )
+            """)
+            conexao.commit()
+            cursor.close()
+
+            # Busca resgates da tabela do desafio
+            df_desafio_resg = pd.read_sql_query("SELECT id, data, valor, local_origem, motivo FROM desafio_resgates", conexao)
+            
+            # Opcional: Se houver resgates na tabela geral de lançamentos do sistema (tipo Saída/Resgate)
+            try:
+                df_geral_resg = pd.read_sql_query(
+                    "SELECT id, data, valor, categoria AS local_origem, 'Resgate Geral' AS motivo FROM lancamentos WHERE tipo = 'Resgate'",
+                    conexao
+                )
+            except Exception:
+                df_geral_resg = pd.DataFrame(columns=["id", "data", "valor", "local_origem", "motivo"])
+
             conexao.close()
-            return df
+            
+            df_total_resg = pd.concat([df_desafio_resg, df_geral_resg], ignore_index=True)
+            if not df_total_resg.empty:
+                df_total_resg = df_total_resg.sort_values(by="id", ascending=False)
+            return df_total_resg
         except Exception:
             return pd.DataFrame(columns=["id", "data", "valor", "local_origem", "motivo"])
 
-    # --- CÁLCULOS E PROPRIEDADES ---
     @rx.var
     def total_aportado(self) -> float:
         df = self.df_aportes
@@ -164,7 +191,8 @@ class DesafioState(rx.State):
 
     @rx.var
     def total_guardado(self) -> float:
-        return self.total_aportado - self.total_resgatado
+        # Patrimônio Líquido Guardado = Total Aportado - Total Resgatado
+        return max(0.0, self.total_aportado - self.total_resgatado)
 
     @rx.var
     def meta_mensal_base(self) -> float:
