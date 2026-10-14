@@ -291,7 +291,7 @@ class DesafioState(rx.State):
             return f"{falta / total_mensal:.1f} meses"
         except: return "0.0 meses"
 
-    # --- AÇÕES ---
+# --- AÇÕES ---
     def salvar_aporte(self):
         local = self.novo_local_aplicacao
         if local == "Outro (Personalizado)":
@@ -307,8 +307,12 @@ class DesafioState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
+            
+            # Limpa os campos e limpa o cache do state para atualizar a UI
             self.novo_valor_depositado = "532.00"
-        except Exception: pass
+            self.novo_outro_local = ""
+        except Exception as e:
+            print(f"Erro ao salvar aporte: {e}")
 
     def salvar_resgate(self):
         origem = self.resg_origem
@@ -325,10 +329,13 @@ class DesafioState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
+            
+            # Reseta o formulário
             self.resg_valor = "100.00"
             self.resg_motivo = ""
-        except Exception: pass
-
+            self.resg_outro_origem = ""
+        except Exception as e:
+            print(f"Erro ao salvar resgate: {e}")
 
 @rx.page(route="/desafio", title="Desafio Reserva & Simulador")
 def pagina_desafio() -> rx.Component:
