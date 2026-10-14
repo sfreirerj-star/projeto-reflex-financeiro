@@ -18,8 +18,9 @@ class DesafioState(rx.State):
     novo_outro_local: str = ""
 
     # --- CAMPOS DE RESGATE ---
+    id_resgate_edicao: int = 0  # 0 significa novo registro; >0 significa modo edicao
     resg_data: str = datetime.now().strftime("%d/%m/%Y")
-    resg_valor: str = ""
+    resg_valor: str = ""        # Campo em branco por padrão
     resg_origem: str = "Banco Itaú"
     resg_outro_origem: str = ""
     resg_motivo: str = ""
@@ -31,59 +32,29 @@ class DesafioState(rx.State):
     sim_qtd_extras: int = 1
 
     # --- SETTERS EXPLÍCITOS ---
-    def set_escolha_perfil_meta(self, v: str):
-        self.escolha_perfil_meta = v
-    
+    def set_escolha_perfil_meta(self, v: str): self.escolha_perfil_meta = v
     def set_prazo_meses(self, v: str):
-        try:
-            self.prazo_meses = int(v) if v else 12
-        except ValueError:
-            self.prazo_meses = 12
+        try: self.prazo_meses = int(v) if v else 12
+        except: self.prazo_meses = 12
+    def set_valor_manual_meta(self, v: str): self.valor_manual_meta = v
 
-    def set_valor_manual_meta(self, v: str):
-        self.valor_manual_meta = v
+    def set_novo_data_deposito(self, v: str): self.novo_data_deposito = v
+    def set_novo_valor_depositado(self, v: str): self.novo_valor_depositado = v
+    def set_novo_local_aplicacao(self, v: str): self.novo_local_aplicacao = v
+    def set_novo_outro_local(self, v: str): self.novo_outro_local = v
 
-    def set_novo_data_deposito(self, v: str):
-        self.novo_data_deposito = v
-        
-    def set_novo_valor_depositado(self, v: str):
-        self.novo_valor_depositado = v
-        
-    def set_novo_local_aplicacao(self, v: str):
-        self.novo_local_aplicacao = v
-        
-    def set_novo_outro_local(self, v: str):
-        self.novo_outro_local = v
+    def set_resg_data(self, v: str): self.resg_data = v
+    def set_resg_valor(self, v: str): self.resg_valor = v
+    def set_resg_origem(self, v: str): self.resg_origem = v
+    def set_resg_outro_origem(self, v: str): self.resg_outro_origem = v
+    def set_resg_motivo(self, v: str): self.resg_motivo = v
 
-    def set_resg_data(self, v: str):
-        self.resg_data = v
-        
-    def set_resg_valor(self, v: str):
-        self.resg_valor = v
-        
-    def set_resg_origem(self, v: str):
-        self.resg_origem = v
-        
-    def set_resg_outro_origem(self, v: str):
-        self.resg_outro_origem = v
-        
-    def set_resg_motivo(self, v: str):
-        self.resg_motivo = v
-
-    def set_sim_meta_alvo(self, v: str):
-        self.sim_meta_alvo = v
-        
-    def set_sim_aporte_mensal(self, v: str):
-        self.sim_aporte_mensal = v
-        
-    def set_sim_ganho_extra(self, v: str):
-        self.sim_ganho_extra = v
-    
+    def set_sim_meta_alvo(self, v: str): self.sim_meta_alvo = v
+    def set_sim_aporte_mensal(self, v: str): self.sim_aporte_mensal = v
+    def set_sim_ganho_extra(self, v: str): self.sim_ganho_extra = v
     def set_sim_qtd_extras(self, v: str):
-        try:
-            self.sim_qtd_extras = int(v) if v else 1
-        except ValueError:
-            self.sim_qtd_extras = 1
+        try: self.sim_qtd_extras = int(v) if v else 1
+        except: self.sim_qtd_extras = 1
 
     # --- CONSULTAS AO BANCO ---
     @rx.var
@@ -92,7 +63,6 @@ class DesafioState(rx.State):
             database.inicializar_banco()
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
-            
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS desafio_aportes (
                     id SERIAL PRIMARY KEY,
@@ -155,15 +125,13 @@ class DesafioState(rx.State):
     @rx.var
     def total_aportado(self) -> float:
         df = self.df_aportes
-        if df.empty or "valor" not in df.columns:
-            return 0.0
+        if df.empty or "valor" not in df.columns: return 0.0
         return float(pd.to_numeric(df["valor"], errors="coerce").fillna(0.0).sum())
 
     @rx.var
     def total_resgatado(self) -> float:
         df = self.df_resgates
-        if df.empty or "valor" not in df.columns:
-            return 0.0
+        if df.empty or "valor" not in df.columns: return 0.0
         return float(pd.to_numeric(df["valor"], errors="coerce").fillna(0.0).sum())
 
     @rx.var
@@ -197,20 +165,13 @@ class DesafioState(rx.State):
 
     # --- FORMATAÇÃO MONETÁRIA ---
     @rx.var
-    def fmt_meta_total(self) -> str:
-        return f"R$ {self.meta_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
+    def fmt_meta_total(self) -> str: return f"R$ {self.meta_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     @rx.var
-    def fmt_total_aportado(self) -> str:
-        return f"R$ {self.total_aportado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
+    def fmt_total_aportado(self) -> str: return f"R$ {self.total_aportado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     @rx.var
-    def fmt_total_resgatado(self) -> str:
-        return f"R$ {self.total_resgatado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
+    def fmt_total_resgatado(self) -> str: return f"R$ {self.total_resgatado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     @rx.var
-    def fmt_total_guardado(self) -> str:
-        return f"R$ {self.total_guardado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    def fmt_total_guardado(self) -> str: return f"R$ {self.total_guardado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     # --- TABELAS PARA A TELA ---
     @rx.var
@@ -239,6 +200,7 @@ class DesafioState(rx.State):
                 "id": int(row["id"]),
                 "data": str(row["data"]),
                 "local_origem": str(row["local_origem"]),
+                "valor_num": val,
                 "valor": f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 "motivo": str(row["motivo"] or ""),
             })
@@ -267,7 +229,7 @@ class DesafioState(rx.State):
             return f"{falta / total_mensal:.1f} meses"
         except: return "0.0 meses"
 
-    # --- AÇÕES DE GRAVAÇÃO E EXCLUSÃO ---
+    # --- AÇÕES DE GRAVAÇÃO, EDIÇÃO E EXCLUSÃO ---
     def salvar_aporte(self):
         local = self.novo_local_aplicacao
         if local == "Outro (Personalizado)":
@@ -307,19 +269,41 @@ class DesafioState(rx.State):
                 )
             """)
             
-            cursor.execute(
-                "INSERT INTO desafio_resgates (data, valor, local_origem, motivo) VALUES (%s, %s, %s, %s)",
-                (self.resg_data.strip(), val, origem, self.resg_motivo.strip())
-            )
+            if self.id_resgate_edicao > 0:
+                # MODO EDIÇÃO
+                cursor.execute(
+                    "UPDATE desafio_resgates SET data = %s, valor = %s, local_origem = %s, motivo = %s WHERE id = %s",
+                    (self.resg_data.strip(), val, origem, self.resg_motivo.strip(), self.id_resgate_edicao)
+                )
+            else:
+                # MODO INSERÇÃO
+                cursor.execute(
+                    "INSERT INTO desafio_resgates (data, valor, local_origem, motivo) VALUES (%s, %s, %s, %s)",
+                    (self.resg_data.strip(), val, origem, self.resg_motivo.strip())
+                )
             conexao.commit()
             cursor.close()
             conexao.close()
             
+            # Limpa o formulário
+            self.id_resgate_edicao = 0
             self.resg_valor = ""
             self.resg_motivo = ""
             self.resg_outro_origem = ""
         except Exception as e:
             print(f"Erro ao salvar resgate: {e}")
+
+    def editar_resgate(self, resgate: dict):
+        self.id_resgate_edicao = int(resgate["id"])
+        self.resg_data = str(resgate["data"])
+        self.resg_valor = f"{float(resgate['valor_num']):.2f}"
+        self.resg_origem = str(resgate["local_origem"])
+        self.resg_motivo = str(resgate["motivo"])
+
+    def cancelar_edicao_resgate(self):
+        self.id_resgate_edicao = 0
+        self.resg_valor = ""
+        self.resg_motivo = ""
 
     def excluir_resgate(self, id_resgate: int):
         try:
@@ -329,6 +313,8 @@ class DesafioState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
+            if self.id_resgate_edicao == id_resgate:
+                self.cancelar_edicao_resgate()
         except Exception as e:
             print(f"Erro ao excluir resgate: {e}")
 
@@ -364,7 +350,6 @@ def pagina_desafio() -> rx.Component:
                 rx.text("Controle seus aportes mensais, gerencie resgates, diversifique suas instituições financeiras e simule o impacto de ganhos extras nas suas metas.", color="#64748b", font_size="0.9rem", mb="4"),
                 rx.divider(mb="4"),
 
-                # --- ABAS DA PÁGINA ---
                 rx.tabs.root(
                     rx.tabs.list(
                         rx.tabs.trigger("🎯 Meu Desafio & Aportes", value="aba_desafio"),
@@ -407,7 +392,7 @@ def pagina_desafio() -> rx.Component:
                                 collapsible=True, width="100%", mb="4"
                             ),
 
-                            # Cards de Indicadores
+                            # Indicadores
                             rx.flex(
                                 rx.box(
                                     rx.text("Meta Total Calculada", size="2", color="gray"),
@@ -432,14 +417,13 @@ def pagina_desafio() -> rx.Component:
                                 direction="row", wrap="wrap", spacing="3", width="100%", mb="4"
                             ),
 
-                            # Barra de Progresso
                             rx.vstack(
                                 rx.text(DesafioState.progresso_perc_fmt, size="2", weight="bold", color="#334155"),
                                 rx.progress(value=(DesafioState.progresso_perc * 100).to(int), width="100%", height="12px"),
                                 width="100%", mb="6"
                             ),
 
-                            # Form Novo Aporte
+                            # Form Aporte
                             rx.vstack(
                                 rx.heading("📥 Registrar Novo Depósito / Aporte", font_size="1.1rem", color="#1e293b", mb="2"),
                                 rx.grid(
@@ -460,42 +444,8 @@ def pagina_desafio() -> rx.Component:
                                     ),
                                     columns={"base": "1", "md": "3"}, gap="4", width="100%", mb="3"
                                 ),
-                                rx.text("Se selecionou 'Outro (Personalizado)' acima, digite o nome:", size="2", weight="bold"),
-                                rx.input(value=DesafioState.novo_outro_local, on_change=DesafioState.set_novo_outro_local, placeholder="Nome do Banco ou Corretora", width="100%", mb="3"),
                                 rx.button("💾 Salvar Aporte no Desafio", on_click=DesafioState.salvar_aporte, color_scheme="blue"),
                                 padding="20px", border="1px solid #e2e8f0", border_radius="10px", bg="white", width="100%", mb="6"
-                            ),
-
-                            # Extrato de Aportes
-                            rx.heading("📊 Extrato de Aportes Realizados", font_size="1.1rem", color="#1e293b", mb="3"),
-                            rx.cond(
-                                DesafioState.lista_aportes_exibicao.length() > 0,
-                                rx.box(
-                                    rx.table.root(
-                                        rx.table.header(
-                                            rx.table.row(
-                                                rx.table.column_header_cell("ID"),
-                                                rx.table.column_header_cell("Data"),
-                                                rx.table.column_header_cell("Local da Aplicação"),
-                                                rx.table.column_header_cell("Valor"),
-                                            )
-                                        ),
-                                        rx.table.body(
-                                            rx.foreach(
-                                                DesafioState.lista_aportes_exibicao,
-                                                lambda item: rx.table.row(
-                                                    rx.table.cell(item["id"]),
-                                                    rx.table.cell(item["data"]),
-                                                    rx.table.cell(item["local_aplicacao"]),
-                                                    rx.table.cell(item["valor"]),
-                                                )
-                                            )
-                                        ),
-                                        variant="surface", size="2", width="100%"
-                                    ),
-                                    max_height="250px", overflow_y="auto", width="100%", border="1px solid #e2e8f0", border_radius="8px", mb="6"
-                                ),
-                                rx.text("Nenhum aporte registrado ainda.", color="gray", mb="6")
                             ),
                             width="100%", pt="4"
                         ),
@@ -516,7 +466,7 @@ def pagina_desafio() -> rx.Component:
                                 ),
                                 rx.vstack(
                                     rx.text("Valor Resgatado (R$)", size="2", weight="bold"),
-                                    rx.input(value=DesafioState.resg_valor, on_change=DesafioState.set_resg_valor, placeholder="532.00", width="100%"),
+                                    rx.input(value=DesafioState.resg_valor, on_change=DesafioState.set_resg_valor, placeholder="Ex: 532.00", width="100%"),
                                     spacing="1"
                                 ),
                                 rx.vstack(
@@ -528,9 +478,21 @@ def pagina_desafio() -> rx.Component:
                             ),
                             rx.text("Motivo do Resgate / Destino (Ex: Emergência, Compra...)", size="2", weight="bold"),
                             rx.input(value=DesafioState.resg_motivo, on_change=DesafioState.set_resg_motivo, width="100%", mb="3"),
-                            rx.button("📤 Registrar Resgate", on_click=DesafioState.salvar_resgate, color_scheme="red", mb="6"),
+                            
+                            rx.hstack(
+                                rx.cond(
+                                    DesafioState.id_resgate_edicao > 0,
+                                    rx.button("✏️ Salvar Alterações", on_click=DesafioState.salvar_resgate, color_scheme="orange"),
+                                    rx.button("📤 Registrar Resgate", on_click=DesafioState.salvar_resgate, color_scheme="red"),
+                                ),
+                                rx.cond(
+                                    DesafioState.id_resgate_edicao > 0,
+                                    rx.button("❌ Cancelar Edição", on_click=DesafioState.cancelar_edicao_resgate, color_scheme="gray"),
+                                ),
+                                spacing="3", mb="6"
+                            ),
 
-                            # Tabela de Resgates com botão de Excluir
+                            # Tabela de Resgates com Ações
                             rx.heading("📋 Histórico de Resgates Realizados", font_size="1.1rem", color="#1e293b", mb="3"),
                             rx.cond(
                                 DesafioState.lista_resgates_exibicao.length() > 0,
@@ -556,11 +518,20 @@ def pagina_desafio() -> rx.Component:
                                                     rx.table.cell(item["valor"]),
                                                     rx.table.cell(item["motivo"]),
                                                     rx.table.cell(
-                                                        rx.button(
-                                                            "🗑️ Excluir",
-                                                            on_click=lambda: DesafioState.excluir_resgate(item["id"]),
-                                                            color_scheme="red",
-                                                            size="1",
+                                                        rx.hstack(
+                                                            rx.button(
+                                                                "✏️ Editar",
+                                                                on_click=DesafioState.editar_resgate(item),
+                                                                color_scheme="blue",
+                                                                size="1",
+                                                            ),
+                                                            rx.button(
+                                                                "🗑️ Excluir",
+                                                                on_click=DesafioState.excluir_resgate(item["id"]),
+                                                                color_scheme="red",
+                                                                size="1",
+                                                            ),
+                                                            spacing="2"
                                                         )
                                                     ),
                                                 )
