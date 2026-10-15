@@ -12,12 +12,12 @@ def pagina_investimentos() -> rx.Component:
                 rx.text("Acompanhamento de alocação de ativos e estratégias de investimento.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
                 rx.divider(mb="4"),
                 
-                # Card de Resumo de Investimentos Responsivo
+                # Card de Resumo de Investimentos Responsivo (Exibe o valor líquido atualizado)
                 rx.hstack(
                     rx.card(
                         rx.vstack(
-                            rx.text("Total Aplicado / Investido", font_size="sm", color="gray.500"),
-                            rx.heading(f"R$ {FinanceState.total_aportado:,.2f}", size={"base": "5", "md": "6"}),
+                            rx.text("Total Aplicado / Investido (Líquido)", font_size="sm", color="gray.500"),
+                            rx.heading(f"R$ {FinanceState.total_aportado:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), size={"base": "5", "md": "6"}),
                         ),
                         p="4",
                         bg="white",

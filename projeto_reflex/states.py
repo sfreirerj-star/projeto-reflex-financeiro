@@ -322,7 +322,6 @@ class FinanceState(rx.State):
             self.id_selecionado = 0
             return
         try:
-            # Tratamento robusto para extrair ID de strings formatadas
             if "|" in id_str:
                 id_str = id_str.split("|")[0].replace("ID:", "").strip()
             elif "-" in id_str:
@@ -460,7 +459,10 @@ class FinanceState(rx.State):
 
             total_ent = float(df_comp[is_receita]['valor_num'].sum())
             total_gas = float(df_comp[is_gasto]['valor_num'].sum())
-            total_aportes = float(df_comp[is_investimento]['valor_num'].sum())
+            total_aportes_brutos = float(df_comp[is_investimento]['valor_num'].sum())
+            
+            # Subtrai os resgates proporcionais/totais para exibir o valor líquido correto nos cartões do Dashboard
+            total_aportes = max(0.0, total_aportes_brutos - self.total_resgatado)
             
             self.fmt_entradas = f"R$ {total_ent:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             self.fmt_gastos = f"R$ {total_gas:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -596,7 +598,7 @@ class FinanceState(rx.State):
             return pd.DataFrame(columns=["id", "data", "valor", "local_origem", "motivo", "valor_num"])
 
     @rx.var
-    def total_aportado(self) -> float:
+    def total_aportado_bruto(self) -> float:
         df = self.df_aportes
         return float(df["valor_num"].sum()) if not df.empty and "valor_num" in df.columns else 0.0
 
@@ -606,8 +608,13 @@ class FinanceState(rx.State):
         return float(df["valor_num"].sum()) if not df.empty and "valor_num" in df.columns else 0.0
 
     @rx.var
+    def total_aportado(self) -> float:
+        """Retorna o valor líquido total dos aportes já deduzido dos resgates."""
+        return max(0.0, self.total_aportado_bruto - self.total_resgatado)
+
+    @rx.var
     def total_guardado(self) -> float:
-        return self.total_aportado - self.total_resgatado
+        return self.total_aportado
 
     @rx.var
     def progresso_perc(self) -> float:
@@ -625,6 +632,7 @@ class FinanceState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
+            self.calcular_resumo_competencia()
             return rx.window_alert("Aporte registrado com sucesso!")
         except ValueError:
             return rx.window_alert("Data inválida. Utilize o formato DD/MM/AAAA.")
@@ -641,6 +649,7 @@ class FinanceState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
+            self.calcular_resumo_competencia()
             return rx.window_alert("Resgate registrado com sucesso!")
         except ValueError:
             return rx.window_alert("Data inválida. Utilize o formato DD/MM/AAAA.")
@@ -655,6 +664,7 @@ class FinanceState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
+            self.calcular_resumo_competencia()
             return rx.window_alert("Lançamento excluído com sucesso!")
         except Exception as e:
             return rx.window_alert(f"Erro ao excluir: {e}")
@@ -665,7 +675,6 @@ class FinanceState(rx.State):
         try:
             df = self.df_aportes
             self.aportes = df.to_dict("records") if not df.empty else []
-            self.total_aportado = float(df["valor_num"].sum()) if not df.empty and "valor_num" in df.columns else 0.0
         except Exception as e:
             print(f"Erro ao carregar dados: {e}")
 

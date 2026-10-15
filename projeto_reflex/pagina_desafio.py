@@ -127,19 +127,16 @@ class DesafioState(rx.State):
         if origem == "Outro (Personalizado)":
             origem = self.resg_outro_origem.strip() if self.resg_outro_origem.strip() else "Outro"
         
-        # Validação do valor preenchido
         if not self.resg_valor or str(self.resg_valor).strip() == "":
             print("Erro: Valor do resgate vazio.")
             return
 
         try:
-            # Converte de forma segura o valor (substitui vírgula por ponto)
             val = float(str(self.resg_valor).replace(",", ".").strip())
             
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
             
-            # Garante que a tabela existe na hora de salvar
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS desafio_resgates (
                     id SERIAL PRIMARY KEY,
@@ -151,13 +148,11 @@ class DesafioState(rx.State):
             """)
             
             if self.id_resgate_edicao > 0:
-                # MODO EDIÇÃO
                 cursor.execute(
                     "UPDATE desafio_resgates SET data = %s, valor = %s, local_origem = %s, motivo = %s WHERE id = %s",
                     (self.resg_data.strip(), val, origem, self.resg_motivo.strip(), self.id_resgate_edicao)
                 )
             else:
-                # MODO INSERÇÃO
                 cursor.execute(
                     "INSERT INTO desafio_resgates (data, valor, local_origem, motivo) VALUES (%s, %s, %s, %s)",
                     (self.resg_data.strip(), val, origem, self.resg_motivo.strip())
@@ -167,7 +162,6 @@ class DesafioState(rx.State):
             cursor.close()
             conexao.close()
             
-            # Limpa o formulário e reseta o modo de edição
             self.id_resgate_edicao = 0
             self.resg_valor = ""
             self.resg_motivo = ""
@@ -255,7 +249,6 @@ class DesafioState(rx.State):
                 "id": int(row["id"]),
                 "data": str(row["data"]),
                 "local_origem": str(row["local_origem"]),
-                "valor_num": val,
                 "valor": f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
                 "motivo": str(row["motivo"] or ""),
             })
@@ -305,70 +298,40 @@ class DesafioState(rx.State):
         except Exception as e:
             print(f"Erro ao salvar aporte: {e}")
 
-    def salvar_resgate(self):
-        origem = self.resg_origem
-        if origem == "Outro (Personalizado)":
-            origem = self.resg_outro_origem.strip() if self.resg_outro_origem.strip() else "Outro"
+    def carregar_para_edicao(self, id_resq: int):
         try:
-            val = float(self.resg_valor.replace(",", "."))
+            self.id_resgate_edicao = int(id_resq)
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
-            
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS desafio_resgates (
-                    id SERIAL PRIMARY KEY,
-                    data TEXT NOT NULL,
-                    valor NUMERIC(10,2) NOT NULL,
-                    local_origem TEXT NOT NULL,
-                    motivo TEXT
-                )
-            """)
-            
-            if self.id_resgate_edicao > 0:
-                # MODO EDIÇÃO
-                cursor.execute(
-                    "UPDATE desafio_resgates SET data = %s, valor = %s, local_origem = %s, motivo = %s WHERE id = %s",
-                    (self.resg_data.strip(), val, origem, self.resg_motivo.strip(), self.id_resgate_edicao)
-                )
-            else:
-                # MODO INSERÇÃO
-                cursor.execute(
-                    "INSERT INTO desafio_resgates (data, valor, local_origem, motivo) VALUES (%s, %s, %s, %s)",
-                    (self.resg_data.strip(), val, origem, self.resg_motivo.strip())
-                )
-            conexao.commit()
+            cursor.execute("SELECT data, valor, local_origem, motivo FROM desafio_resgates WHERE id = %s", (id_resq,))
+            row = cursor.fetchone()
             cursor.close()
             conexao.close()
             
-            # Limpa o formulário
-            self.id_resgate_edicao = 0
-            self.resg_valor = ""
-            self.resg_motivo = ""
-            self.resg_outro_origem = ""
+            if row:
+                self.resg_data = str(row[0])
+                self.resg_valor = f"{float(row[1]):.2f}"
+                self.resg_origem = str(row[2])
+                self.resg_motivo = str(row[3] or "")
         except Exception as e:
-            print(f"Erro ao salvar resgate: {e}")
-
-    def editar_resgate(self, resgate: dict):
-        self.id_resgate_edicao = int(resgate["id"])
-        self.resg_data = str(resgate["data"])
-        self.resg_valor = f"{float(resgate['valor_num']):.2f}"
-        self.resg_origem = str(resgate["local_origem"])
-        self.resg_motivo = str(resgate["motivo"])
+            print(f"Erro ao carregar resgate para edição: {e}")
 
     def cancelar_edicao_resgate(self):
         self.id_resgate_edicao = 0
         self.resg_valor = ""
         self.resg_motivo = ""
+        self.resg_origem = "Banco Itaú"
 
-    def excluir_resgate(self, id_resgate: int):
+    def excluir_resgate(self, id_resq: int):
         try:
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
-            cursor.execute("DELETE FROM desafio_resgates WHERE id = %s", (id_resgate,))
+            cursor.execute("DELETE FROM desafio_resgates WHERE id = %s", (int(id_resq),))
             conexao.commit()
             cursor.close()
             conexao.close()
-            if self.id_resgate_edicao == id_resgate:
+            
+            if self.id_resgate_edicao == int(id_resq):
                 self.cancelar_edicao_resgate()
         except Exception as e:
             print(f"Erro ao excluir resgate: {e}")
@@ -576,13 +539,13 @@ def pagina_desafio() -> rx.Component:
                                                         rx.hstack(
                                                             rx.button(
                                                                 "✏️ Editar",
-                                                                on_click=DesafioState.editar_resgate(item),
+                                                                on_click=lambda: DesafioState.carregar_para_edicao(item["id"]),
                                                                 color_scheme="blue",
                                                                 size="1",
                                                             ),
                                                             rx.button(
                                                                 "🗑️ Excluir",
-                                                                on_click=DesafioState.excluir_resgate(item["id"]),
+                                                                on_click=lambda: DesafioState.excluir_resgate(item["id"]),
                                                                 color_scheme="red",
                                                                 size="1",
                                                             ),

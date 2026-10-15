@@ -95,9 +95,16 @@ def pagina_dashboard() -> rx.Component:
         on_mount=FinanceState.calcular_resumo_competencia,
     )
 
-# INICIALIZAÇÃO DA APLICAÇÃO E REGISTRO DE ROTAS
+# INICIALIZAÇÃO DA APLICAÇÃO E REGISTRO DE TODAS AS ROTAS
 app = rx.App()
 app.add_page(pagina_dashboard, route="/")
-app.add_page(pagina_aportes, route="/aportes")
+app.add_page(pagina_lancamentos, route="/lancamentos", title="Novo Lançamento")
+app.add_page(pagina_gerenciar, route="/gerenciar", title="Gerenciar Lançamentos")
+app.add_page(pagina_raio_x_dividas, route="/raio-x-dividas", title="Raio-X Dívidas")
+app.add_page(pagina_aportes, route="/aportes", title="Aportes")
+app.add_page(pagina_investimentos, route="/investimentos", title="Orientação de Investimentos")
 app.add_page(pagina_desafio, route="/desafio", title="Desafio Reserva & Simulador")
+app.add_page(pagina_relatorios, route="/relatorios", title="Relatórios")
+app.add_page(pagina_reserva, route="/reserva", title="Reserva de Emergência")
+app.add_page(pagina_dividendos, route="/dividendos", title="Dividendos")
 app.add_page(pagina_milenar, route="/milenar", title="Alocação Milenar - Talmude")
