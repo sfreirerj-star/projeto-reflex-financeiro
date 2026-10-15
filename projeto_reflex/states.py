@@ -622,6 +622,12 @@ class FinanceState(rx.State):
             return min(self.total_guardado / self.meta_total, 1.0)
         return 0.0
 
+    @rx.var
+    def fmt_total_aportado_liquido(self) -> str:
+        """Retorna o valor líquido formatado em moeda brasileira (R$)."""
+        val = self.total_aportado
+        return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    
     def salvar_aporte(self):
         local_final = self.local_outro.strip() if self.local_selecionado == "Outro (Personalizado)" and self.local_outro.strip() else self.local_selecionado
         try:
