@@ -363,8 +363,7 @@ def pagina_desafio() -> rx.Component:
         barra_navegacao(),
         rx.container(
             rx.vstack(
-                rx.heading("💰 Controle Financeiro — Painel do Marcelo", font_size="1.5rem", color="#1e293b", margin_top="15px"),
-                rx.heading("🎯 Desafio Personalizado & Simulador de Antecipação", font_size="1.2rem", color="#334155"),
+                rx.heading("🎯 Desafio Personalizado & Simulador de Antecipação", font_size="1.5rem", color="#334155", margin_top="15px"),
                 rx.text("Controle seus aportes mensais, gerencie resgates, diversifique suas instituições financeiras e simule o impacto de ganhos extras nas suas metas.", color="#64748b", font_size="0.9rem", mb="4"),
                 rx.divider(mb="4"),
 
