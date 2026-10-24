@@ -4,8 +4,11 @@ import database
 from datetime import datetime
 
 class DesafioState(rx.State):
-    """Estado completo para gerir os aportes, resgates, metas e simuladores do Desafio."""
+    """Estado do Desafio 100% independente, sem herança de cache travado."""
     
+    # Gatilho de reatividade
+    refresh_trigger: int = 0
+
     # --- CONFIGURAÇÃO DE META ---
     escolha_perfil_meta: str = "1 Plantão CPROEIS (R$ 532,00 / mês)"
     prazo_meses: int = 12
@@ -17,10 +20,15 @@ class DesafioState(rx.State):
     novo_local_aplicacao: str = "Banco Itaú"
     novo_outro_local: str = ""
 
+    # --- CAMPOS DE RENDIMENTO ---
+    rend_data: str = datetime.now().strftime("%d/%m/%Y")
+    rend_valor: str = ""
+    rend_local: str = "Banco Itaú"
+
     # --- CAMPOS DE RESGATE ---
-    id_resgate_edicao: int = 0  # 0 significa novo registro; >0 significa modo edicao
+    id_resgate_edicao: int = 0
     resg_data: str = datetime.now().strftime("%d/%m/%Y")
-    resg_valor: str = ""        # Campo em branco por padrão
+    resg_valor: str = ""
     resg_origem: str = "Banco Itaú"
     resg_outro_origem: str = ""
     resg_motivo: str = ""
@@ -43,6 +51,10 @@ class DesafioState(rx.State):
     def set_novo_local_aplicacao(self, v: str): self.novo_local_aplicacao = v
     def set_novo_outro_local(self, v: str): self.novo_outro_local = v
 
+    def set_rend_data(self, v: str): self.rend_data = v
+    def set_rend_valor(self, v: str): self.rend_valor = v
+    def set_rend_local(self, v: str): self.rend_local = v
+
     def set_resg_data(self, v: str): self.resg_data = v
     def set_resg_valor(self, v: str): self.resg_valor = v
     def set_resg_origem(self, v: str): self.resg_origem = v
@@ -55,137 +67,6 @@ class DesafioState(rx.State):
     def set_sim_qtd_extras(self, v: str):
         try: self.sim_qtd_extras = int(v) if v else 1
         except: self.sim_qtd_extras = 1
-
-    # --- CONSULTAS AO BANCO ---
-    @rx.var
-    def df_aportes(self) -> pd.DataFrame:
-        try:
-            database.inicializar_banco()
-            conexao = database.obter_conexao()
-            cursor = conexao.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS desafio_aportes (
-                    id SERIAL PRIMARY KEY,
-                    data TEXT NOT NULL,
-                    valor NUMERIC(10,2) NOT NULL,
-                    local_aplicacao TEXT NOT NULL
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS desafio_resgates (
-                    id SERIAL PRIMARY KEY,
-                    data TEXT NOT NULL,
-                    valor NUMERIC(10,2) NOT NULL,
-                    local_origem TEXT NOT NULL,
-                    motivo TEXT
-                )
-            """)
-            conexao.commit()
-            cursor.close()
-
-            df_desafio = pd.read_sql_query("SELECT id, data, valor, local_aplicacao FROM desafio_aportes", conexao)
-            try:
-                df_geral = pd.read_sql_query("SELECT id, data, valor, categoria AS local_aplicacao FROM lancamentos WHERE tipo IN ('Aporte', 'Investimento')", conexao)
-            except Exception:
-                df_geral = pd.DataFrame(columns=["id", "data", "valor", "local_aplicacao"])
-
-            conexao.close()
-            df_total = pd.concat([df_desafio, df_geral], ignore_index=True)
-            if not df_total.empty:
-                df_total = df_total.sort_values(by="id", ascending=False)
-            return df_total
-        except Exception:
-            return pd.DataFrame(columns=["id", "data", "valor", "local_aplicacao"])
-
-    @rx.var
-    def df_resgates(self) -> pd.DataFrame:
-        try:
-            database.inicializar_banco()
-            conexao = database.obter_conexao()
-            cursor = conexao.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS desafio_resgates (
-                    id SERIAL PRIMARY KEY,
-                    data TEXT NOT NULL,
-                    valor NUMERIC(10,2) NOT NULL,
-                    local_origem TEXT NOT NULL,
-                    motivo TEXT
-                )
-            """)
-            conexao.commit()
-            cursor.close()
-
-            df = pd.read_sql_query("SELECT id, data, valor, local_origem, motivo FROM desafio_resgates ORDER BY id DESC", conexao)
-            conexao.close()
-            return df
-        except Exception as e:
-            print(f"Erro ao ler df_resgates: {e}")
-            return pd.DataFrame(columns=["id", "data", "valor", "local_origem", "motivo"])
-
-    def salvar_resgate(self):
-        origem = self.resg_origem
-        if origem == "Outro (Personalizado)":
-            origem = self.resg_outro_origem.strip() if self.resg_outro_origem.strip() else "Outro"
-        
-        if not self.resg_valor or str(self.resg_valor).strip() == "":
-            print("Erro: Valor do resgate vazio.")
-            return
-
-        try:
-            val = float(str(self.resg_valor).replace(",", ".").strip())
-            
-            conexao = database.obter_conexao()
-            cursor = conexao.cursor()
-            
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS desafio_resgates (
-                    id SERIAL PRIMARY KEY,
-                    data TEXT NOT NULL,
-                    valor NUMERIC(10,2) NOT NULL,
-                    local_origem TEXT NOT NULL,
-                    motivo TEXT
-                )
-            """)
-            
-            if self.id_resgate_edicao > 0:
-                cursor.execute(
-                    "UPDATE desafio_resgates SET data = %s, valor = %s, local_origem = %s, motivo = %s WHERE id = %s",
-                    (self.resg_data.strip(), val, origem, self.resg_motivo.strip(), self.id_resgate_edicao)
-                )
-            else:
-                cursor.execute(
-                    "INSERT INTO desafio_resgates (data, valor, local_origem, motivo) VALUES (%s, %s, %s, %s)",
-                    (self.resg_data.strip(), val, origem, self.resg_motivo.strip())
-                )
-                
-            conexao.commit()
-            cursor.close()
-            conexao.close()
-            
-            self.id_resgate_edicao = 0
-            self.resg_valor = ""
-            self.resg_motivo = ""
-            self.resg_outro_origem = ""
-            
-        except Exception as e:
-            print(f"Erro crítico ao salvar resgate no banco: {e}")
-
-    # --- CÁLCULOS E PROPRIEDADES ---
-    @rx.var
-    def total_aportado(self) -> float:
-        df = self.df_aportes
-        if df.empty or "valor" not in df.columns: return 0.0
-        return float(pd.to_numeric(df["valor"], errors="coerce").fillna(0.0).sum())
-
-    @rx.var
-    def total_resgatado(self) -> float:
-        df = self.df_resgates
-        if df.empty or "valor" not in df.columns: return 0.0
-        return float(pd.to_numeric(df["valor"], errors="coerce").fillna(0.0).sum())
-
-    @rx.var
-    def total_guardado(self) -> float:
-        return max(0.0, self.total_aportado - self.total_resgatado)
 
     @rx.var
     def meta_mensal_base(self) -> float:
@@ -202,6 +83,51 @@ class DesafioState(rx.State):
     def meta_total(self) -> float:
         return self.meta_mensal_base * int(self.prazo_meses or 12)
 
+    # CÁLCULO DIRETO E ISOLADO
+    @rx.var
+    def total_aportado_bruto(self) -> float:
+        _ = self.refresh_trigger
+        tot = 0.0
+        try:
+            conexao = database.obter_conexao()
+            cursor = conexao.cursor()
+            
+            # 1. Soma investimentos da tabela central 'lancamentos'
+            cursor.execute("SELECT SUM(valor) FROM lancamentos WHERE LOWER(tipo) IN ('investimento', 'investimentos') OR LOWER(categoria) IN ('investimento', 'investimentos')")
+            r1 = cursor.fetchone()
+            if r1 and r1[0] is not None: tot += float(r1[0])
+            
+            # 2. Soma rendimentos da tabela 'desafio_rendimentos'
+            cursor.execute("SELECT SUM(valor) FROM desafio_rendimentos")
+            r2 = cursor.fetchone()
+            if r2 and r2[0] is not None: tot += float(r2[0])
+            
+            cursor.close()
+            conexao.close()
+        except Exception as e:
+            print(f"Erro no Desafio ao calcular bruto: {e}")
+        return tot
+
+    @rx.var
+    def total_resgatado(self) -> float:
+        _ = self.refresh_trigger
+        tot = 0.0
+        try:
+            conexao = database.obter_conexao()
+            cursor = conexao.cursor()
+            cursor.execute("SELECT SUM(valor) FROM desafio_resgates")
+            r = cursor.fetchone()
+            if r and r[0] is not None: tot = float(r[0])
+            cursor.close()
+            conexao.close()
+        except Exception:
+            pass
+        return tot
+
+    @rx.var
+    def total_guardado(self) -> float:
+        return max(0.0, self.total_aportado_bruto - self.total_resgatado)
+
     @rx.var
     def progresso_perc(self) -> float:
         mt = self.meta_total
@@ -212,49 +138,50 @@ class DesafioState(rx.State):
     def progresso_perc_fmt(self) -> str:
         return f"Progresso Atual do Desafio: {self.progresso_perc * 100:.1f}% alcançado"
 
-    # --- FORMATAÇÃO MONETÁRIA ---
+    # FORMATAÇÕES MOSTRADAS NA TELA
     @rx.var
-    def fmt_meta_total(self) -> str: return f"R$ {self.meta_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    @rx.var
-    def fmt_total_aportado(self) -> str: return f"R$ {self.total_aportado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    @rx.var
-    def fmt_total_resgatado(self) -> str: return f"R$ {self.total_resgatado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    @rx.var
-    def fmt_total_guardado(self) -> str: return f"R$ {self.total_guardado:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    def fmt_meta_total(self) -> str:
+        return f"R$ {self.meta_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    # --- TABELAS PARA A TELA ---
     @rx.var
-    def lista_aportes_exibicao(self) -> list[dict]:
-        df = self.df_aportes
-        if df.empty: return []
-        res = []
-        for _, row in df.iterrows():
-            val = float(row["valor"] or 0)
-            res.append({
-                "id": int(row["id"]),
-                "data": str(row["data"]),
-                "local_aplicacao": str(row["local_aplicacao"]),
-                "valor": f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-            })
-        return res
+    def fmt_total_bruto_exibir(self) -> str:
+        v = self.total_aportado_bruto
+        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+    @rx.var
+    def fmt_total_resgatado_exibir(self) -> str:
+        v = self.total_resgatado
+        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    @rx.var
+    def fmt_total_liquido_exibir(self) -> str:
+        v = self.total_guardado
+        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    # LISTA DE RESGATES
     @rx.var
     def lista_resgates_exibicao(self) -> list[dict]:
-        df = self.df_resgates
-        if df.empty: return []
+        _ = self.refresh_trigger
         res = []
-        for _, row in df.iterrows():
-            val = float(row["valor"] or 0)
-            res.append({
-                "id": int(row["id"]),
-                "data": str(row["data"]),
-                "local_origem": str(row["local_origem"]),
-                "valor": f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-                "motivo": str(row["motivo"] or ""),
-            })
+        try:
+            conexao = database.obter_conexao()
+            df = pd.read_sql_query("SELECT id, data, valor, local_origem, motivo FROM desafio_resgates ORDER BY id DESC", conexao)
+            conexao.close()
+            if not df.empty:
+                for _, row in df.iterrows():
+                    val = float(row["valor"] or 0)
+                    res.append({
+                        "id": int(row["id"]),
+                        "data": str(row["data"]),
+                        "local_origem": str(row["local_origem"]),
+                        "valor": f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                        "motivo": str(row["motivo"] or ""),
+                    })
+        except Exception:
+            pass
         return res
 
-    # --- SIMULADOR DE METAS CÁLCULOS ---
+    # SIMULADOR
     @rx.var
     def sim_meses_sem_extra(self) -> str:
         try:
@@ -277,26 +204,102 @@ class DesafioState(rx.State):
             return f"{falta / total_mensal:.1f} meses"
         except: return "0.0 meses"
 
-    # --- AÇÕES DE GRAVAÇÃO, EDIÇÃO E EXCLUSÃO ---
+    # AÇÕES
     def salvar_aporte(self):
         local = self.novo_local_aplicacao
         if local == "Outro (Personalizado)":
             local = self.novo_outro_local.strip() if self.novo_outro_local.strip() else "Outro"
         try:
             val = float(self.novo_valor_depositado.replace(",", "."))
+            data_reg = self.novo_data_deposito.strip()
+            
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
             cursor.execute(
-                "INSERT INTO desafio_aportes (data, valor, local_aplicacao) VALUES (%s, %s, %s)",
-                (self.novo_data_deposito.strip(), val, local)
+                "INSERT INTO lancamentos (data, tipo, categoria, descricao, valor) VALUES (%s, %s, %s, %s, %s)",
+                (data_reg, "Investimento", "Investimento", f"Aporte {local}", val)
             )
             conexao.commit()
             cursor.close()
             conexao.close()
+            
             self.novo_valor_depositado = "532.00"
             self.novo_outro_local = ""
+            self.refresh_trigger += 1
+            return rx.window_alert("Aporte cadastrado com sucesso!")
         except Exception as e:
             print(f"Erro ao salvar aporte: {e}")
+
+    def salvar_rendimento(self):
+        try:
+            val = float(self.rend_valor.replace(",", "."))
+            conexao = database.obter_conexao()
+            cursor = conexao.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS desafio_rendimentos (
+                    id SERIAL PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    valor NUMERIC(10,2) NOT NULL,
+                    local_aplicacao TEXT NOT NULL
+                )
+            """)
+            cursor.execute(
+                "INSERT INTO desafio_rendimentos (data, valor, local_aplicacao) VALUES (%s, %s, %s)",
+                (self.rend_data.strip(), val, self.rend_local)
+            )
+            conexao.commit()
+            cursor.close()
+            conexao.close()
+            self.rend_valor = ""
+            self.refresh_trigger += 1
+            return rx.window_alert("Rendimento registrado com sucesso!")
+        except Exception as e:
+            return rx.window_alert(f"Erro ao salvar rendimento: {e}")
+
+    def salvar_resgate(self):
+        origem = self.resg_origem
+        if origem == "Outro (Personalizado)":
+            origem = self.resg_outro_origem.strip() if self.resg_outro_origem.strip() else "Outro"
+        if not self.resg_valor or str(self.resg_valor).strip() == "":
+            return
+        try:
+            val = float(str(self.resg_valor).replace(",", ".").strip())
+            data_reg = self.resg_data.strip()
+            motivo_final = self.resg_motivo.strip()
+
+            conexao = database.obter_conexao()
+            cursor = conexao.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS desafio_resgates (
+                    id SERIAL PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    valor NUMERIC(10,2) NOT NULL,
+                    local_origem TEXT NOT NULL,
+                    motivo TEXT
+                )
+            """)
+            if self.id_resgate_edicao > 0:
+                cursor.execute(
+                    "UPDATE desafio_resgates SET data = %s, valor = %s, local_origem = %s, motivo = %s WHERE id = %s",
+                    (data_reg, val, origem, motivo_final, self.id_resgate_edicao)
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO desafio_resgates (data, valor, local_origem, motivo) VALUES (%s, %s, %s, %s)",
+                    (data_reg, val, origem, motivo_final)
+                )
+            conexao.commit()
+            cursor.close()
+            conexao.close()
+            
+            self.id_resgate_edicao = 0
+            self.resg_valor = ""
+            self.resg_motivo = ""
+            self.resg_outro_origem = ""
+            self.refresh_trigger += 1
+            return rx.window_alert("Resgate registrado com sucesso!")
+        except Exception as e:
+            print(f"Erro ao salvar resgate: {e}")
 
     def carregar_para_edicao(self, id_resq: int):
         try:
@@ -307,14 +310,13 @@ class DesafioState(rx.State):
             row = cursor.fetchone()
             cursor.close()
             conexao.close()
-            
             if row:
                 self.resg_data = str(row[0])
                 self.resg_valor = f"{float(row[1]):.2f}"
                 self.resg_origem = str(row[2])
                 self.resg_motivo = str(row[3] or "")
         except Exception as e:
-            print(f"Erro ao carregar resgate para edição: {e}")
+            print(f"Erro ao carregar resgate: {e}")
 
     def cancelar_edicao_resgate(self):
         self.id_resgate_edicao = 0
@@ -330,7 +332,7 @@ class DesafioState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
-            
+            self.refresh_trigger += 1
             if self.id_resgate_edicao == int(id_resq):
                 self.cancelar_edicao_resgate()
         except Exception as e:
@@ -364,7 +366,7 @@ def pagina_desafio() -> rx.Component:
         rx.container(
             rx.vstack(
                 rx.heading("🎯 Desafio Personalizado & Simulador de Antecipação", font_size="1.5rem", color="#334155", margin_top="15px"),
-                rx.text("Controle seus aportes mensais, gerencie resgates, diversifique suas instituições financeiras e simule o impacto de ganhos extras nas suas metas.", color="#64748b", font_size="0.9rem", mb="4"),
+                rx.text("Controle seus aportes mensais, gerencie resgates, rendimentos e simule o impacto de ganhos extras nas suas metas.", color="#64748b", font_size="0.9rem", mb="4"),
                 rx.divider(mb="4"),
 
                 rx.tabs.root(
@@ -417,18 +419,18 @@ def pagina_desafio() -> rx.Component:
                                     padding="14px", border_radius="8px", border="1px solid #e2e8f0", bg="white", width=["100%", "220px"], flex_grow="1"
                                 ),
                                 rx.box(
-                                    rx.text("Total Aportado", size="2", color="gray"),
-                                    rx.heading(DesafioState.fmt_total_aportado, size="5", color="#16a34a"),
+                                    rx.text("Total Aportado + Rendimentos", size="2", color="gray"),
+                                    rx.heading(DesafioState.fmt_total_bruto_exibir, size="5", color="#16a34a"),
                                     padding="14px", border_radius="8px", border="1px solid #e2e8f0", bg="white", width=["100%", "220px"], flex_grow="1"
                                 ),
                                 rx.box(
                                     rx.text("Total Resgatado", size="2", color="gray"),
-                                    rx.heading(DesafioState.fmt_total_resgatado, size="5", color="#dc2626"),
+                                    rx.heading(DesafioState.fmt_total_resgatado_exibir, size="5", color="#dc2626"),
                                     padding="14px", border_radius="8px", border="1px solid #e2e8f0", bg="white", width=["100%", "220px"], flex_grow="1"
                                 ),
                                 rx.box(
                                     rx.text("Patrimônio Líquido Guardado", size="2", color="gray"),
-                                    rx.heading(DesafioState.fmt_total_guardado, size="5", color="#7c3aed"),
+                                    rx.heading(DesafioState.fmt_total_liquido_exibir, size="5", color="#7c3aed"),
                                     padding="14px", border_radius="8px", border="1px solid #e2e8f0", bg="white", width=["100%", "220px"], flex_grow="1"
                                 ),
                                 direction="row", wrap="wrap", spacing="3", width="100%", mb="4"
@@ -462,8 +464,35 @@ def pagina_desafio() -> rx.Component:
                                     columns={"base": "1", "md": "3"}, gap="4", width="100%", mb="3"
                                 ),
                                 rx.button("💾 Salvar Aporte no Desafio", on_click=DesafioState.salvar_aporte, color_scheme="blue"),
+                                padding="20px", border="1px solid #e2e8f0", border_radius="10px", bg="white", width="100%", mb="4"
+                            ),
+
+                            # Form Rendimentos
+                            rx.vstack(
+                                rx.heading("📈 Registrar Rendimentos / Juros", font_size="1.1rem", color="#1e293b", mb="2"),
+                                rx.text("Adicione rendimentos fracionados (ex: R$ 0,76) para atualizar o saldo guardado por instituição.", size="2", color="gray", mb="2"),
+                                rx.grid(
+                                    rx.vstack(
+                                        rx.text("Data (DD/MM/AAAA)", size="2", weight="bold"),
+                                        rx.input(value=DesafioState.rend_data, on_change=DesafioState.set_rend_data, width="100%"),
+                                        spacing="1"
+                                    ),
+                                    rx.vstack(
+                                        rx.text("Valor do Rendimento (R$)", size="2", weight="bold"),
+                                        rx.input(value=DesafioState.rend_valor, on_change=DesafioState.set_rend_valor, placeholder="Ex: 0.76", width="100%"),
+                                        spacing="1"
+                                    ),
+                                    rx.vstack(
+                                        rx.text("Instituição Referente", size="2", weight="bold"),
+                                        rx.select(locais_opcoes, value=DesafioState.rend_local, on_change=DesafioState.set_rend_local, width="100%"),
+                                        spacing="1"
+                                    ),
+                                    columns={"base": "1", "md": "3"}, gap="4", width="100%", mb="3"
+                                ),
+                                rx.button("📈 Salvar Rendimento", on_click=DesafioState.salvar_rendimento, color_scheme="green"),
                                 padding="20px", border="1px solid #e2e8f0", border_radius="10px", bg="white", width="100%", mb="6"
                             ),
+
                             width="100%", pt="4"
                         ),
                         value="aba_desafio"
@@ -509,7 +538,7 @@ def pagina_desafio() -> rx.Component:
                                 spacing="3", mb="6"
                             ),
 
-                            # Tabela de Resgates com Ações
+                            # Tabela de Resgates
                             rx.heading("📋 Histórico de Resgates Realizados", font_size="1.1rem", color="#1e293b", mb="3"),
                             rx.cond(
                                 DesafioState.lista_resgates_exibicao.length() > 0,

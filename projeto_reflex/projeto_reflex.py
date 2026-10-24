@@ -74,7 +74,7 @@ def pagina_dashboard() -> rx.Component:
         barra_navegacao(),  # Utiliza o menu unificado e responsivo
         rx.container(
             rx.vstack(
-                rx.heading("Controle Financeiro - Painel do Marcelo", font_size={"base": "1.2rem", "md": "1.5rem"}, color="#1e293b", margin_top="15px", margin_bottom="2px"),
+                rx.heading("💰 Controle Financeiro - Painel do Marcelo", font_size={"base": "1.2rem", "md": "1.5rem"}, color="#1e293b", margin_top="15px", margin_bottom="2px"),
                 rx.text("Aplicativo unificado de créditos, débitos e investimentos.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
                 rx.divider(mb="4"),
                 

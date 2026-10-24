@@ -9,8 +9,6 @@
     "@radix-ui/react-accordion": "1.2.20",
     "@radix-ui/themes": "3.3.0",
     "@react-router/node": "8.4.0",
-    "gridjs": "6.2.0",
-    "gridjs-react": "6.1.1",
     "isbot": "5.2.2",
     "lucide-react": "1.26.0",
     "mergician": "v2.0.2",

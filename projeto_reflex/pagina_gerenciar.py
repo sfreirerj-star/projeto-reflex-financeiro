@@ -6,6 +6,9 @@ import database
 class GerenciarState(rx.State):
     """Estado para gerir, editar e excluir lançamentos e dívidas."""
     
+    # Gatilho para forçar a atualização imediata das listas e tabelas
+    refresh_trigger: int = 0
+    
     competencia_selecionada: str = datetime.now().strftime("%m/%Y")
     id_selecionado: int = 0
     
@@ -45,6 +48,7 @@ class GerenciarState(rx.State):
 
     @rx.var
     def competencias_disponiveis(self) -> list[str]:
+        _ = self.refresh_trigger
         mes_atual = datetime.now().strftime("%m/%Y")
         comps = [mes_atual]
         try:
@@ -66,6 +70,7 @@ class GerenciarState(rx.State):
     @rx.var
     def lista_lancamentos_mes(self) -> list[dict]:
         """Retorna os lançamentos manuais filtrados pela competência selecionada."""
+        _ = self.refresh_trigger
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
@@ -99,6 +104,7 @@ class GerenciarState(rx.State):
 
     @rx.var
     def itens_select_lancamentos(self) -> list[str]:
+        _ = self.refresh_trigger
         itens = []
         for l in self.lista_lancamentos_mes:
             itens.append(f"{l['id']} - {l['data']} | {l['tipo']} | {l['categoria']} | {l['valor']}")
@@ -147,6 +153,7 @@ class GerenciarState(rx.State):
             conexao.close()
             
             self.cancelar_selecao()
+            self.refresh_trigger += 1  # <-- Atualiza instantaneamente a tabela e o seletor
             return rx.window_alert("Lançamento atualizado com sucesso!")
         except ValueError:
             return rx.window_alert("Data inválida. Utilize o formato DD/MM/AAAA.")
@@ -164,7 +171,9 @@ class GerenciarState(rx.State):
             conexao.commit()
             cursor.close()
             conexao.close()
+            
             self.cancelar_selecao()
+            self.refresh_trigger += 1  # <-- Atualiza instantaneamente a tabela e o seletor
             return rx.window_alert("Lançamento excluído com sucesso!")
         except Exception as e:
             return rx.window_alert(f"Erro ao excluir: {e}")

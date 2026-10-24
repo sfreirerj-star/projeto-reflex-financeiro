@@ -317,6 +317,48 @@ def pagina_aportes() -> rx.Component:
                                 align_items="end",
                                 mb="4",
                             ),
+                            
+                            rx.divider(mb="4"),
+
+                            # --- NOVO MÓDULO: REGISTAR RENDIMENTOS ---
+                            rx.heading("📈 Registar Rendimentos / Juros", font_size="1.2rem", color="#1e293b", mb="3"),
+                            rx.grid(
+                                rx.vstack(
+                                    rx.text("Data do Rendimento (DD/MM/AAAA)", weight="bold", size="2"),
+                                    rx.input(
+                                        value=FinanceState.data_rendimento,
+                                        on_change=FinanceState.set_data_rendimento,
+                                        width="100%",
+                                    ),
+                                    spacing="1",
+                                ),
+                                rx.vstack(
+                                    rx.text("Valor do Rendimento (R$)", weight="bold", size="2"),
+                                    rx.input(
+                                        placeholder="Ex: 0.76",
+                                        value=FinanceState.valor_rendimento,
+                                        on_change=FinanceState.set_valor_rendimento,
+                                        width="100%",
+                                    ),
+                                    spacing="1",
+                                ),
+                                rx.vstack(
+                                    rx.text("Instituição Referente", weight="bold", size="2"),
+                                    rx.select(
+                                        ["Banco Itaú", "Nomad (Investimentos em Dólar)", "Sofisa Direto", "Banco Inter", "Nubank", "Tesouro Selic", "Outro"],
+                                        value=FinanceState.local_rendimento,
+                                        on_change=FinanceState.set_local_rendimento,
+                                        width="100%",
+                                    ),
+                                    spacing="1",
+                                ),
+                                columns="3",
+                                gap="4",
+                                width="100%",
+                                align_items="end",
+                                mb="4",
+                            ),
+                            rx.button("📈 Salvar Rendimento", on_click=FinanceState.salvar_rendimento, color_scheme="green", width="100%"),
                             padding="20px",
                             border="1px solid #e2e8f0",
                             border_radius="10px",
