@@ -30,6 +30,9 @@ def card_resumo(titulo: str, valor: str, cor_texto: str = "#1e293b") -> rx.Compo
     )
 
 def dashboard_resumo_competencia() -> rx.Component:
+    # Lê o gatilho para forçar a reatividade e atualização imediata do cálculo
+    _ = FinanceState.refresh_trigger
+    
     return rx.vstack(
         rx.flex(
             rx.heading("Resumo da Competência e Visualização Gráfica", font_size={"base": "1rem", "md": "1.2rem"}, color="#1e293b"),
@@ -68,7 +71,7 @@ def dashboard_resumo_competencia() -> rx.Component:
         width="100%",
         margin_bottom="25px",
     )
-
+    
 def pagina_dashboard() -> rx.Component:
     return rx.vstack(
         barra_navegacao(),  # Utiliza o menu unificado e responsivo

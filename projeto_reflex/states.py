@@ -493,7 +493,7 @@ class FinanceState(rx.State):
             comp_sel = str(self.competencia_selecionada).strip()
             df_lanc_mes = df_lancamentos[df_lancamentos["competencia"] == comp_sel] if not df_lancamentos.empty else pd.DataFrame()
 
-            # 1. Apenas Receitas Reais (exclui resgates e investimentos)
+            # 1. Apenas Receitas Reais (exclui estritamente resgates, investimentos e transferências internas)
             total_receitas_mes = (
                 df_lanc_mes[
                     df_lanc_mes["tipo_clean"].isin(["receita", "crédito", "credito", "entrada"]) 
@@ -515,7 +515,7 @@ class FinanceState(rx.State):
                 if not df_lanc_mes.empty else 0.0
             )
 
-            # 4. Resgates do mês (retornam ao caixa para cobrir despesas, sem serem receitas)
+            # 4. Resgates do mês
             total_resgates_mes = (
                 df_lanc_mes[
                     df_lanc_mes["tipo_clean"].isin(["resgate", "resgates"]) 
@@ -532,7 +532,7 @@ class FinanceState(rx.State):
 
             saldo_remanescente_anterior = 0.0
             
-            # Fórmula exata: Saldo Final = Caixa Inicial + Entradas Reais - Gastos Comuns - Aportes + Resgates
+            # Fórmula unificada e blindada
             saldo_mes = saldo_remanescente_anterior + total_receitas_mes - total_gastos_mes - total_aportes_mes + total_resgates_mes
 
             def fmt_m(val):
