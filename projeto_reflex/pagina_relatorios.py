@@ -2,9 +2,10 @@ import reflex as rx
 import pandas as pd
 from datetime import datetime
 import database
+import io
 
 class RelatoriosState(rx.State):
-    """Estado para gerir relatórios, filtros, fechamento e projeções com paridade ao Streamlit."""
+    """Estado unificado para relatórios com tratamento 100% resiliente de datas."""
     competencia_selecionada: str = datetime.now().strftime("%m/%Y")
     
     # Filtros da Aba 1
@@ -16,7 +17,6 @@ class RelatoriosState(rx.State):
     # Projeções Aba 3
     proj_meses: int = 6
 
-    # Setters explícitos
     def set_competencia_selecionada(self, valor: str):
         self.competencia_selecionada = valor
 
@@ -48,7 +48,7 @@ class RelatoriosState(rx.State):
             df_l = pd.read_sql_query("SELECT data FROM lancamentos", conexao)
             conexao.close()
             if not df_l.empty and "data" in df_l.columns:
-                dt = pd.to_datetime(df_l["data"], format="%d/%m/%Y", errors="coerce", dayfirst=True)
+                dt = pd.to_datetime(df_l["data"], errors="coerce")
                 comps.extend(dt.dt.strftime("%m/%Y").dropna().tolist())
         except Exception:
             pass
@@ -71,18 +71,32 @@ class RelatoriosState(rx.State):
 
     @rx.var
     def df_lancamentos_raw(self) -> pd.DataFrame:
+        """Carrega todos os lançamentos garantindo conversão universal de datas."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
             df = pd.read_sql_query("SELECT id, data, tipo, categoria, descricao, valor FROM lancamentos ORDER BY id DESC", conexao)
             conexao.close()
             if df.empty:
-                return pd.DataFrame(columns=["id", "data", "tipo", "categoria", "descricao", "valor"])
-            df["data_dt"] = pd.to_datetime(df["data"], format="%d/%m/%Y", errors="coerce", dayfirst=True)
+                return pd.DataFrame(columns=["id", "data", "tipo", "categoria", "descricao", "valor", "data_dt", "competencia"])
+            
+            # Converte datas de forma totalmente flexível (aceita YYYY-MM-DD e DD/MM/YYYY)
+            dt_parsed = pd.to_datetime(df["data"], errors="coerce")
+            
+            # Se houver datas não reconhecidas, tenta parsear assumindo dia primeiro
+            mask_nat = dt_parsed.isna()
+            if mask_nat.any():
+                dt_parsed.loc[mask_nat] = pd.to_datetime(df.loc[mask_nat, "data"], errors="coerce", dayfirst=True)
+
+            df["data_dt"] = dt_parsed
             df["competencia"] = df["data_dt"].dt.strftime("%m/%Y")
+            
+            # Fallback para string caso alguma data venha nula na conversão
+            df["competencia"] = df["competencia"].fillna(df["data"].astype(str).str.slice(3, 10))
             return df
-        except Exception:
-            return pd.DataFrame(columns=["id", "data", "tipo", "categoria", "descricao", "valor"])
+        except Exception as e:
+            print(f"Erro ao carregar raw relatorios: {e}")
+            return pd.DataFrame(columns=["id", "data", "tipo", "categoria", "descricao", "valor", "data_dt", "competencia"])
 
     @rx.var
     def df_filtrado(self) -> pd.DataFrame:
@@ -91,6 +105,8 @@ class RelatoriosState(rx.State):
             return df
 
         df_f = df.copy()
+        
+        # Filtro de competência flexível
         if self.usar_filtro_comp:
             df_f = df_f[df_f["competencia"] == self.competencia_selecionada]
         
@@ -116,9 +132,13 @@ class RelatoriosState(rx.State):
         for _, row in df_f.iterrows():
             val = float(row["valor"] or 0.0)
             val_fmt = f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            
+            dt_obj = row["data_dt"]
+            data_fmt = dt_obj.strftime("%d/%m/%Y") if pd.notna(dt_obj) else str(row["data"])
+
             resultado.append({
                 "id": int(row["id"]),
-                "data": str(row["data"]),
+                "data": data_fmt,
                 "tipo": str(row["tipo"]),
                 "categoria": str(row["categoria"]),
                 "descricao": str(row["descricao"] or ""),
@@ -169,6 +189,38 @@ class RelatoriosState(rx.State):
             })
         return tabela
 
+    def baixar_csv(self):
+        df_export = self.df_filtrado.copy()
+        if df_export.empty:
+            return rx.window_alert("Nenhum dado disponível para exportação.")
+        
+        cols = [c for c in ["id", "data", "tipo", "categoria", "descricao", "valor"] if c in df_export.columns]
+        df_export = df_export[cols]
+        
+        content = df_export.to_csv(index=False, sep=";", encoding="utf-8-sig")
+        return rx.download(
+            data=content.encode("utf-8-sig"),
+            filename=f"relatorio_lancamentos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+        )
+
+    def baixar_excel(self):
+        df_export = self.df_filtrado.copy()
+        if df_export.empty:
+            return rx.window_alert("Nenhum dado disponível para exportação.")
+        
+        cols = [c for c in ["id", "data", "tipo", "categoria", "descricao", "valor"] if c in df_export.columns]
+        df_export = df_export[cols]
+
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df_export.to_excel(writer, index=False, sheet_name="Lançamentos")
+        
+        output.seek(0)
+        return rx.download(
+            data=output.getvalue(),
+            filename=f"relatorio_lancamentos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        )
+
 
 @rx.page(route="/relatorios", title="Relatórios e Consultas")
 def pagina_relatorios() -> rx.Component:
@@ -182,7 +234,6 @@ def pagina_relatorios() -> rx.Component:
                 rx.text("Filtre seus lançamentos detalhadamente, exporte relatórios, acompanhe o fechamento mês a mês e projete seu saldo futuro.", color="#64748b", font_size="0.9rem", margin_bottom="15px"),
                 rx.divider(mb="4"),
 
-                # Abas Principais
                 rx.tabs.root(
                     rx.tabs.list(
                         rx.tabs.trigger("🔍 Consulta, Filtros e Ações", value="tab1"),
@@ -190,12 +241,10 @@ def pagina_relatorios() -> rx.Component:
                         rx.tabs.trigger("🔮 Projeção de Saldo Futuro", value="tab3"),
                     ),
                     
-                    # --- ABA 1: CONSULTA & FILTROS ---
                     rx.tabs.content(
                         rx.vstack(
                             rx.heading(f"🔍 Filtrar Lançamentos (Competência Ativa: {RelatoriosState.competencia_selecionada})", font_size="1.2rem", color="#1e293b", mt="3", mb="3"),
                             
-                            # Filtros de linha superior (Grid Responsiva)
                             rx.grid(
                                 rx.hstack(
                                     rx.checkbox(
@@ -237,7 +286,6 @@ def pagina_relatorios() -> rx.Component:
                                 mb="4",
                             ),
 
-                            # Tabela com limite de altura e scroll vertical/horizontal
                             rx.cond(
                                 RelatoriosState.lista_lancamentos_filtrados.length() > 0,
                                 rx.box(
@@ -280,7 +328,6 @@ def pagina_relatorios() -> rx.Component:
                                 rx.text("Nenhum lançamento encontrado com os filtros aplicados.", color="gray", mb="4"),
                             ),
 
-                            # Banner de Totalizador dos Lançamentos Filtrados
                             rx.callout(
                                 rx.hstack(
                                     rx.text("📊 Total dos lançamentos filtrados:", weight="bold", size="3"),
@@ -293,10 +340,9 @@ def pagina_relatorios() -> rx.Component:
                                 mb="4",
                             ),
 
-                            # Botões de Ação e Exportação (Flex wrap para telemóveis)
                             rx.flex(
-                                rx.button("📥 Baixar em CSV", variant="soft", color_scheme="gray", on_click=rx.window_alert("Exportação para CSV em processamento...")),
-                                rx.button("📊 Baixar em Excel (.xlsx)", variant="soft", color_scheme="green", on_click=rx.window_alert("Exportação para Excel em processamento...")),
+                                rx.button("📥 Baixar em CSV", variant="soft", color_scheme="gray", on_click=RelatoriosState.baixar_csv),
+                                rx.button("📊 Baixar em Excel (.xlsx)", variant="soft", color_scheme="green", on_click=RelatoriosState.baixar_excel),
                                 rx.button("🖨️ Imprimir / PDF", color_scheme="red", on_click=rx.window_alert("Abre caixa de impressão do navegador.")),
                                 direction="row",
                                 wrap="wrap",
@@ -309,7 +355,6 @@ def pagina_relatorios() -> rx.Component:
                         value="tab1",
                     ),
 
-                    # --- ABA 2: FECHAMENTO MENSAL ---
                     rx.tabs.content(
                         rx.vstack(
                             rx.heading("📅 Fechamento de Mês (Saldo Remanescente)", font_size="1.2rem", color="#1e293b", mt="3", mb="3"),
@@ -353,7 +398,6 @@ def pagina_relatorios() -> rx.Component:
                         value="tab2",
                     ),
 
-                    # --- ABA 3: PROJEÇÃO DE SALDO FUTURO ---
                     rx.tabs.content(
                         rx.vstack(
                             rx.heading("🔮 Projeção de Saldo Futuro", font_size="1.2rem", color="#1e293b", mt="3", mb="2"),

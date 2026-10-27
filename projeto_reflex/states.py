@@ -20,7 +20,24 @@ class FinanceState(rx.State):
         super().__init__(*args, **kwargs)
         database.inicializar_banco()
         self.garantir_tabelas()
+        self.corrigir_tipos_resgates_automatico()
         self.calcular_resumo_competencia()
+
+    def corrigir_tipos_resgates_automatico(self):
+        """Corrige automaticamente qualquer resgate que tenha ficado com tipo incorreto na tabela de lançamentos."""
+        try:
+            conexao = obter_conexao()
+            cursor = conexao.cursor()
+            cursor.execute("""
+                UPDATE lancamentos 
+                SET tipo = 'Resgate' 
+                WHERE LOWER(categoria) = 'resgate' AND LOWER(tipo) != 'resgate';
+            """)
+            conexao.commit()
+            cursor.close()
+            conexao.close()
+        except Exception as e:
+            print(f"Erro ao corrigir tipos de resgates: {e}")
 
     def limpar_resgates_duplicados(self):
         """Remove automaticamente lançamentos duplicados de resgate para corrigir o saldo."""
@@ -162,7 +179,10 @@ class FinanceState(rx.State):
             return rx.window_alert("Por favor, preencha o valor.")
         try:
             val = float(self.valor.replace(",", "."))
-            data_reg = self.data_lancamento.strip() if self.data_lancamento else datetime.now().strftime("%Y-%m-%d")
+            
+            data_raw = self.data_lancamento.strip() if self.data_lancamento else datetime.now().strftime("%Y-%m-%d")
+            dt_obj = pd.to_datetime(data_raw, errors="coerce")
+            data_reg = dt_obj.strftime("%Y-%m-%d") if pd.notna(dt_obj) else data_raw
 
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
@@ -184,21 +204,9 @@ class FinanceState(rx.State):
                         local_aplicacao TEXT NOT NULL
                     )
                 """)
-                
-                data_formatada = data_reg
-                try:
-                    dt_obj = datetime.strptime(data_reg, "%Y-%m-%d")
-                    data_formatada = dt_obj.strftime("%d/%m/%Y")
-                except ValueError:
-                    try:
-                        dt_obj = datetime.strptime(data_reg, "%d/%m/%Y")
-                        data_formatada = dt_obj.strftime("%d/%m/%Y")
-                    except ValueError:
-                        pass
-
                 cursor.execute(
                     "INSERT INTO desafio_aportes (data, valor, local_aplicacao) VALUES (%s, %s, %s)",
-                    (data_formatada, val, self.descricao.strip())
+                    (data_reg, val, self.descricao.strip())
                 )
 
             conexao.commit()
@@ -244,42 +252,9 @@ class FinanceState(rx.State):
         except Exception as e:
             return rx.window_alert(f"Erro ao alterar tipo: {e}")
 
-    def migrar_resgates_antigos(self):
-        """Migra resgates antigos da tabela desafio_resgates para a tabela lancamentos se já não existirem lá."""
-        try:
-            conexao = obter_conexao()
-            cursor = conexao.cursor()
-            
-            cursor.execute("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'desafio_resgates');")
-            existe_resgates = cursor.fetchone()[0]
-            
-            if existe_resgates:
-                df_resg = pd.read_sql_query("SELECT data, valor, local_origem, motivo FROM desafio_resgates", conexao)
-                for _, row in df_resg.iterrows():
-                    data_r = str(row["data"])
-                    val_r = float(row["valor"])
-                    origem_r = str(row["local_origem"])
-                    motivo_r = str(row["motivo"] or "")
-                    desc_completa = f"Resgate {origem_r} - {motivo_r}".strip()
-                    
-                    cursor.execute(
-                        "SELECT id FROM lancamentos WHERE data = %s AND valor = %s AND categoria = 'Resgate'",
-                        (data_r, val_r)
-                    )
-                    if not cursor.fetchone():
-                        cursor.execute(
-                            """
-                            INSERT INTO lancamentos (data, tipo, categoria, descricao, valor)
-                            VALUES (%s, %s, %s, %s, %s)
-                            """,
-                            (data_r, "Resgate", "Resgate", desc_completa, val_r)
-                        )
-                conexao.commit()
-            cursor.close()
-            conexao.close()
-        except Exception as e:
-            print(f"Erro ao migrar resgates antigos: {e}")
-
+    # =========================================================================
+    # LISTAGEM DE LANÇAMENTOS UNIFICADA
+    # =========================================================================
     @rx.var
     def lista_lancamentos(self) -> list[dict]:
         _ = self.refresh_trigger
@@ -288,12 +263,37 @@ class FinanceState(rx.State):
             conexao = database.obter_conexao()
             df = pd.read_sql_query("SELECT id, data, tipo, categoria, descricao, valor FROM lancamentos ORDER BY id DESC", conexao)
             conexao.close()
+
             if df.empty:
                 return []
-            return df.to_dict(orient="records")
+            
+            resultado = []
+            for _, row in df.iterrows():
+                desc = row["descricao"]
+                desc_str = "" if pd.isna(desc) else str(desc)
+                val_float = float(row['valor'] or 0.0)
+                val_fmt = f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                
+                data_raw = str(row["data"])
+                dt_obj = pd.to_datetime(data_raw, errors="coerce")
+                data_fmt = dt_obj.strftime("%d/%m/%Y") if pd.notna(dt_obj) else data_raw
+
+                resultado.append({
+                    "id": int(row["id"]),
+                    "data": data_fmt,
+                    "tipo": str(row["tipo"]),
+                    "categoria": str(row["categoria"]),
+                    "descricao": desc_str,
+                    "valor": val_fmt,
+                })
+            return resultado
         except Exception as e:
-            print(f"Erro ao carregar lançamentos: {e}")
+            print(f"Erro ao carregar lista unificada: {e}")
             return []
+
+    @rx.var
+    def lista_lancamentos_mes(self) -> list[dict]:
+        return self.lista_lancamentos
 
     # DÍVIDAS
     def cadastrar_divida(self):
@@ -444,7 +444,7 @@ class FinanceState(rx.State):
         self.calcular_resumo_competencia()
 
     def calcular_resumo_competencia(self) -> None:
-        """Calcula receitas, despesas, aportes e resgates unificando perfeitamente com o Streamlit."""
+        """Calcula receitas, despesas, aportes e resgates unificando perfeitamente a liquidez."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
@@ -493,29 +493,29 @@ class FinanceState(rx.State):
             comp_sel = str(self.competencia_selecionada).strip()
             df_lanc_mes = df_lancamentos[df_lancamentos["competencia"] == comp_sel] if not df_lancamentos.empty else pd.DataFrame()
 
-            # 1. Apenas Receitas Reais (exclui estritamente resgates, investimentos e transferências internas)
             total_receitas_mes = (
                 df_lanc_mes[
                     df_lanc_mes["tipo_clean"].isin(["receita", "crédito", "credito", "entrada"]) 
                     & (~df_lanc_mes["cat_clean"].isin(["resgate", "resgates"]))
                     & (~df_lanc_mes["tipo_clean"].isin(["resgate", "resgates"]))
+                    & (~df_lanc_mes["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"]))
                 ]["valor"].sum()
                 if not df_lanc_mes.empty else 0.0
             )
 
-            # 2. Gastos comuns do mês
             total_gastos_mes = (
-                df_lanc_mes[df_lanc_mes["tipo_clean"].isin(["despesa", "débito", "debito", "saida"])]["valor"].sum()
+                df_lanc_mes[
+                    df_lanc_mes["tipo_clean"].isin(["despesa", "débito", "debito", "saida"])
+                    & (~df_lanc_mes["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"]))
+                ]["valor"].sum()
                 if not df_lanc_mes.empty else 0.0
             )
 
-            # 3. Aportes do mês
             total_aportes_mes = (
                 df_lanc_mes[df_lanc_mes["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"])]["valor"].sum()
                 if not df_lanc_mes.empty else 0.0
             )
 
-            # 4. Resgates do mês
             total_resgates_mes = (
                 df_lanc_mes[
                     df_lanc_mes["tipo_clean"].isin(["resgate", "resgates"]) 
@@ -531,9 +531,7 @@ class FinanceState(rx.State):
                 total_resgates_mes = df_resgates[df_resgates["competencia"] == comp_sel]["valor_num"].sum()
 
             saldo_remanescente_anterior = 0.0
-            
-            # Fórmula unificada e blindada
-            saldo_mes = saldo_remanescente_anterior + total_receitas_mes - total_gastos_mes - total_aportes_mes + total_resgates_mes
+            saldo_mes = saldo_remanescente_anterior + total_receitas_mes + total_resgates_mes - total_gastos_mes - total_aportes_mes
 
             def fmt_m(val):
                 return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -738,10 +736,14 @@ class FinanceState(rx.State):
     def salvar_aporte(self):
         local_final = self.local_outro.strip() if self.local_selecionado == "Outro (Personalizado)" and self.local_outro.strip() else self.local_selecionado
         try:
-            datetime.strptime(self.data_aporte.strip(), "%d/%m/%Y")
+            dt_obj = pd.to_datetime(self.data_aporte.strip(), errors="coerce")
+            if pd.isna(dt_obj):
+                raise ValueError
+            data_reg = dt_obj.strftime("%Y-%m-%d")
+
             conexao = obter_conexao()
             cursor = conexao.cursor()
-            cursor.execute("INSERT INTO desafio_aportes (data, valor, local_aplicacao) VALUES (%s, %s, %s)", (self.data_aporte.strip(), self.valor_aporte, local_final))
+            cursor.execute("INSERT INTO desafio_aportes (data, valor, local_aplicacao) VALUES (%s, %s, %s)", (data_reg, self.valor_aporte, local_final))
             conexao.commit()
             cursor.close()
             conexao.close()
@@ -756,8 +758,10 @@ class FinanceState(rx.State):
     def salvar_resgate(self):
         origem_final = self.origem_personalizada.strip() if self.local_origem_sel == "Outro (Personalizado)" and self.origem_personalizada.strip() else self.local_origem_sel
         try:
-            data_reg = self.data_resgate.strip()
-            datetime.strptime(data_reg, "%d/%m/%Y")
+            dt_obj = pd.to_datetime(self.data_resgate.strip(), errors="coerce")
+            if pd.isna(dt_obj):
+                raise ValueError
+            data_reg = dt_obj.strftime("%Y-%m-%d")
             val = float(self.valor_resgate)
             
             conexao = obter_conexao()
@@ -768,13 +772,12 @@ class FinanceState(rx.State):
                 (data_reg, val, origem_final, self.motivo_resgate.strip())
             )
             
-            # Grava como 'Resgate' para não inflar as receitas operacionais
             cursor.execute(
                 """
                 INSERT INTO lancamentos (data, tipo, categoria, descricao, valor)
                 VALUES (%s, %s, %s, %s, %s)
                 """,
-                (data_reg, "Resgate", "Resgate", f"Resgate {origem_final} - {self.motivo_resgate.strip()}", val)
+                (data_reg, "Investimento", "Resgate", f"Resgate {origem_final} - {self.motivo_resgate.strip()}", val)
             )
 
             conexao.commit()
