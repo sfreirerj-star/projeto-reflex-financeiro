@@ -5,114 +5,12 @@ from datetime import datetime
 from .states import FinanceState
 
 
-class RaioXDividasState(rx.State):
-    """Estado específico para gerir cálculos, indicadores e formulários do Raio-X de Dívidas."""
-
-    @rx.var
-    def df_dividas(self) -> pd.DataFrame:
-        try:
-            database.inicializar_banco()
-            conexao = database.obter_conexao()
-            df = pd.read_sql_query(
-                "SELECT id, credor, valor_total, total_parcelas, valor_parcela, dia_vencimento, status FROM dividas ORDER BY id DESC",
-                conexao,
-            )
-            conexao.close()
-            return df
-        except Exception:
-            return pd.DataFrame(
-                columns=[
-                    "id",
-                    "credor",
-                    "valor_total",
-                    "total_parcelas",
-                    "valor_parcela",
-                    "dia_vencimento",
-                    "status",
-                ]
-            )
-
-    @rx.var
-    def total_dividas_pendentes(self) -> str:
-        df = self.df_dividas
-        if df.empty:
-            return "R$ 0,00"
-        df_pendentes = df[df["status"] == "Pendente"]
-        if df_pendentes.empty:
-            return "R$ 0,00"
-
-        soma = pd.to_numeric(df_pendentes["valor_total"], errors="coerce").sum()
-        return (
-            f"R$ {soma:,.2f}"
-            .replace(",", "X")
-            .replace(".", ",")
-            .replace("X", ".")
-        )
-
-    @rx.var
-    def prazo_estimado_quitacao(self) -> str:
-        df = self.df_dividas
-        if df.empty:
-            return "Sem dívidas pendentes"
-
-        df_pendentes = df[df["status"] == "Pendente"]
-        if df_pendentes.empty:
-            return "Sem dívidas pendentes"
-
-        max_parc = pd.to_numeric(
-            df_pendentes["total_parcelas"], errors="coerce"
-        ).max()
-        if pd.isna(max_parc) or max_parc < 1:
-            max_parc = 1
-
-        hoje = datetime.now()
-        mes_futuro = hoje.month + int(max_parc)
-        ano_futuro = hoje.year + (mes_futuro // 12)
-        mes_futuro = mes_futuro % 12
-        if mes_futuro == 0:
-            mes_futuro = 12
-            ano_futuro -= 1
-
-        return f"Aprox. {int(max_parc)} meses ({mes_futuro:02d}/{ano_futuro})"
-
-    @rx.var
-    def lista_dividas_exibicao(self) -> list[dict]:
-        df = self.df_dividas
-        if df.empty:
-            return []
-
-        resultado = []
-        for _, row in df.iterrows():
-            v_total = float(row["valor_total"] or 0.0)
-            v_parc = float(row["valor_parcela"] or 0.0)
-            resultado.append({
-                "id": int(row["id"]),
-                "credor": str(row["credor"] or ""),
-                "valor_total": (
-                    f"R$ {v_total:,.2f}"
-                    .replace(",", "X")
-                    .replace(".", ",")
-                    .replace("X", ".")
-                ),
-                "total_parcelas": int(row["total_parcelas"] or 1),
-                "valor_parcela": (
-                    f"R$ {v_parc:,.2f}"
-                    .replace(",", "X")
-                    .replace(".", ",")
-                    .replace("X", ".")
-                ),
-                "dia_vencimento": int(row["dia_vencimento"] or 15),
-                "status": str(row["status"] or "Pendente"),
-            })
-        return resultado
-
-
 @rx.page(route="/dividas", title="Raio-X de Dívidas")
 def pagina_raio_x_dividas() -> rx.Component:
     from .navegacao import barra_navegacao
 
     return rx.vstack(
-        barra_navegacao(),  # Menu azul superior padronizado
+        barra_navegacao(),
         rx.container(
             rx.vstack(
                 rx.heading(
@@ -145,7 +43,7 @@ def pagina_raio_x_dividas() -> rx.Component:
                                 size="2",
                             ),
                             rx.text(
-                                RaioXDividasState.total_dividas_pendentes,
+                                FinanceState.total_dividas_pendentes,
                                 size="6",
                                 weight="bold",
                                 color="red",
@@ -161,7 +59,7 @@ def pagina_raio_x_dividas() -> rx.Component:
                                 size="2",
                             ),
                             rx.text(
-                                RaioXDividasState.prazo_estimado_quitacao,
+                                FinanceState.prazo_estimado_quitacao,
                                 size="6",
                                 weight="bold",
                                 color="blue",
@@ -292,7 +190,7 @@ def pagina_raio_x_dividas() -> rx.Component:
                     mb="3",
                 ),
                 rx.cond(
-                    RaioXDividasState.lista_dividas_exibicao.length() > 0,
+                    FinanceState.lista_dividas_exibicao.length() > 0,
                     rx.box(
                         rx.table.root(
                             rx.table.header(
@@ -308,7 +206,7 @@ def pagina_raio_x_dividas() -> rx.Component:
                             ),
                             rx.table.body(
                                 rx.foreach(
-                                    RaioXDividasState.lista_dividas_exibicao,
+                                    FinanceState.lista_dividas_exibicao,
                                     lambda item: rx.table.row(
                                         rx.table.cell(item["id"]),
                                         rx.table.cell(item["credor"]),
@@ -324,7 +222,7 @@ def pagina_raio_x_dividas() -> rx.Component:
                             size="2",
                             width="100%",
                         ),
-                        max_height="320px",  # Altura controlada com barra de rolagem vertical
+                        max_height="320px",
                         overflow_y="auto",
                         width="100%",
                         border="1px solid #e2e8f0",

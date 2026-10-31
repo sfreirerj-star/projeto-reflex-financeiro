@@ -477,6 +477,105 @@ class FinanceState(rx.State):
         except Exception as e:
             print(f"Erro ao carregar select: {e}")
             return []
+
+    @rx.var
+    def df_dividas(self) -> pd.DataFrame:
+        _ = self.refresh_trigger
+        try:
+            database.inicializar_banco()
+            conexao = database.obter_conexao()
+            df = pd.read_sql_query(
+                "SELECT id, credor, valor_total, total_parcelas, valor_parcela, dia_vencimento, status FROM dividas ORDER BY id DESC",
+                conexao,
+            )
+            conexao.close()
+            return df
+        except Exception:
+            return pd.DataFrame(
+                columns=[
+                    "id",
+                    "credor",
+                    "valor_total",
+                    "total_parcelas",
+                    "valor_parcela",
+                    "dia_vencimento",
+                    "status",
+                ]
+            )
+
+    @rx.var
+    def total_dividas_pendentes(self) -> str:
+        df = self.df_dividas
+        if df.empty:
+            return "R$ 0,00"
+        df_pendentes = df[df["status"] == "Pendente"]
+        if df_pendentes.empty:
+            return "R$ 0,00"
+
+        soma = pd.to_numeric(df_pendentes["valor_total"], errors="coerce").sum()
+        return (
+            f"R$ {soma:,.2f}"
+            .replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+
+    @rx.var
+    def prazo_estimado_quitacao(self) -> str:
+        df = self.df_dividas
+        if df.empty:
+            return "Sem dívidas pendentes"
+
+        df_pendentes = df[df["status"] == "Pendente"]
+        if df_pendentes.empty:
+            return "Sem dívidas pendentes"
+
+        max_parc = pd.to_numeric(
+            df_pendentes["total_parcelas"], errors="coerce"
+        ).max()
+        if pd.isna(max_parc) or max_parc < 1:
+            max_parc = 1
+
+        hoje = datetime.now()
+        mes_futuro = hoje.month + int(max_parc)
+        ano_futuro = hoje.year + (mes_futuro // 12)
+        mes_futuro = mes_futuro % 12
+        if mes_futuro == 0:
+            mes_futuro = 12
+            ano_futuro -= 1
+
+        return f"Aprox. {int(max_parc)} meses ({mes_futuro:02d}/{ano_futuro})"
+
+    @rx.var
+    def lista_dividas_exibicao(self) -> list[dict]:
+        df = self.df_dividas
+        if df.empty:
+            return []
+
+        resultado = []
+        for _, row in df.iterrows():
+            v_total = float(row["valor_total"] or 0.0)
+            v_parc = float(row["valor_parcela"] or 0.0)
+            resultado.append({
+                "id": int(row["id"]),
+                "credor": str(row["credor"] or ""),
+                "valor_total": (
+                    f"R$ {v_total:,.2f}"
+                    .replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                ),
+                "total_parcelas": int(row["total_parcelas"] or 1),
+                "valor_parcela": (
+                    f"R$ {v_parc:,.2f}"
+                    .replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                ),
+                "dia_vencimento": int(row["dia_vencimento"] or 15),
+                "status": str(row["status"] or "Pendente"),
+            })
+        return resultado
         
     # ==========================================
     # MOTOR DE CÁLCULO DE COMPETÊNCIA
@@ -486,7 +585,7 @@ class FinanceState(rx.State):
         self.calcular_resumo_competencia()
 
     def calcular_resumo_competencia(self) -> None:
-        """Calcula receitas, despesas, aportes e resgates unificando perfeitamente a liquidez."""
+        """Calcula receitas, despesas, aportes e resgates unificando perfeitamente a liquidez e acumulando o saldo anterior."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
@@ -527,12 +626,61 @@ class FinanceState(rx.State):
                 df_lancamentos["cat_clean"] = df_lancamentos["categoria"].astype(str).str.strip().str.lower()
                 res_lanc = df_lancamentos["data"].apply(extrair_comp)
                 df_lancamentos["competencia"] = [x[0] for x in res_lanc]
+                df_lancamentos["comp_sort"] = [x[1] for x in res_lanc]
             else:
                 df_lancamentos["tipo_clean"] = ""
                 df_lancamentos["cat_clean"] = ""
                 df_lancamentos["competencia"] = "Indefinido"
+                df_lancamentos["comp_sort"] = "9999-99"
+
+            if not df_resgates.empty and "valor" in df_resgates.columns:
+                df_resgates["valor_num"] = pd.to_numeric(df_resgates["valor"], errors="coerce").fillna(0.0)
+                res_resg = df_resgates["data"].apply(extrair_comp)
+                df_resgates["competencia"] = [x[0] for x in res_resg]
+                df_resgates["comp_sort"] = [x[1] for x in res_resg]
+            else:
+                df_resgates["competencia"] = "Indefinido"
+                df_resgates["comp_sort"] = "9999-99"
 
             comp_sel = str(self.competencia_selecionada).strip()
+            dt_sel = pd.to_datetime(comp_sel, format="%m/%Y", errors="coerce")
+            sort_sel = dt_sel.strftime("%Y-%m") if pd.notna(dt_sel) else "9999-99"
+
+            # --- CÁLCULO AUTOMÁTICO DO SALDO ANTERIOR (ACUMULADO DOS MESES ANTERIORES) ---
+            saldo_remanescente_anterior = 0.0
+            if not df_lancamentos.empty:
+                df_anteriores = df_lancamentos[df_lancamentos["comp_sort"] < sort_sel]
+                if not df_anteriores.empty:
+                    ant_rec = df_anteriores[
+                        df_anteriores["tipo_clean"].isin(["receita", "crédito", "credito", "entrada"]) 
+                        & (~df_anteriores["cat_clean"].isin(["resgate", "resgates"]))
+                        & (~df_anteriores["tipo_clean"].isin(["resgate", "resgates"]))
+                        & (~df_anteriores["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"]))
+                    ]["valor"].sum()
+
+                    ant_gast = df_anteriores[
+                        df_anteriores["tipo_clean"].isin(["despesa", "débito", "debito", "saida"])
+                        & (~df_anteriores["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"]))
+                    ]["valor"].sum()
+
+                    ant_aport = df_anteriores[
+                        df_anteriores["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"])
+                    ]["valor"].sum()
+
+                    ant_resg = df_anteriores[
+                        df_anteriores["tipo_clean"].isin(["resgate", "resgates"]) 
+                        | df_anteriores["cat_clean"].isin(["resgate", "resgates"])
+                    ]["valor"].sum()
+
+                    saldo_remanescente_anterior = ant_rec + ant_resg - ant_gast - ant_aport
+
+            # Soma também eventuais resgates avulsos de meses anteriores
+            if not df_resgates.empty:
+                df_resg_ant = df_resgates[df_resgates["comp_sort"] < sort_sel]
+                if not df_resg_ant.empty:
+                    saldo_remanescente_anterior += df_resg_ant["valor_num"].sum()
+
+            # --- CÁLCULO DA COMPETÊNCIA ATUAL ---
             df_lanc_mes = df_lancamentos[df_lancamentos["competencia"] == comp_sel] if not df_lancamentos.empty else pd.DataFrame()
 
             total_receitas_mes = (
@@ -567,12 +715,9 @@ class FinanceState(rx.State):
             )
 
             if total_resgates_mes == 0.0 and not df_resgates.empty:
-                df_resgates["valor_num"] = pd.to_numeric(df_resgates["valor"], errors="coerce").fillna(0.0)
-                res_resg = df_resgates["data"].apply(extrair_comp)
-                df_resgates["competencia"] = [x[0] for x in res_resg]
-                total_resgates_mes = df_resgates[df_resgates["competencia"] == comp_sel]["valor_num"].sum()
+                df_resgates_mes = df_resgates[df_resgates["competencia"] == comp_sel]
+                total_resgates_mes = df_resgates_mes["valor_num"].sum() if not df_resgates_mes.empty else 0.0
 
-            saldo_remanescente_anterior = 0.0
             saldo_mes = saldo_remanescente_anterior + total_receitas_mes + total_resgates_mes - total_gastos_mes - total_aportes_mes
 
             def fmt_m(val):
@@ -673,7 +818,7 @@ class FinanceState(rx.State):
             try:
                 df_total = pd.read_sql_query("SELECT id, data, valor, local_aplicacao FROM desafio_aportes", conexao)
             except:
-                df_total = pd.DataFrame(columns=["id, data, valor, local_aplicacao"])
+                df_total = pd.DataFrame(columns=["id", "data", "valor", "local_aplicacao"])
             conexao.close()
 
             if not df_total.empty:
