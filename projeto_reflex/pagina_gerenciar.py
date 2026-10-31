@@ -2,6 +2,7 @@ import reflex as rx
 import pandas as pd
 from datetime import datetime
 import database
+from .states import FinanceState
 
 class GerenciarState(rx.State):
     """Estado para gerir, editar e excluir lançamentos unificado."""
@@ -46,7 +47,9 @@ class GerenciarState(rx.State):
             conexao.close()
 
             if not df_l.empty and "data" in df_l.columns:
-                dt = pd.to_datetime(df_l["data"], errors="coerce")
+                dt = pd.to_datetime(df_l["data"], format="%Y-%m-%d", errors="coerce")
+                dt = dt.fillna(pd.to_datetime(df_l["data"], format="%d/%m/%Y", errors="coerce"))
+                dt = dt.fillna(pd.to_datetime(df_l["data"], errors="coerce"))
                 comps.extend(dt.dt.strftime("%m/%Y").dropna().tolist())
         except Exception:
             pass
@@ -55,7 +58,7 @@ class GerenciarState(rx.State):
 
     @rx.var
     def lista_lancamentos_mes(self) -> list[dict]:
-        """Retorna todos os lançamentos unificados sem ocultar registos por competência."""
+        """Retorna os lançamentos filtrados estritamente pela competência selecionada."""
         _ = self.refresh_trigger
         try:
             database.inicializar_banco()
@@ -67,52 +70,35 @@ class GerenciarState(rx.State):
                 return []
             
             resultado = []
-            for _, row in df.iterrows():
-                desc = row["descricao"]
-                desc_str = "" if pd.isna(desc) else str(desc)
-                val_float = float(row['valor'] or 0.0)
-                
-                # Normaliza exibição da data para DD/MM/YYYY
-                data_obj = pd.to_datetime(row["data"], errors="coerce")
-                data_fmt = data_obj.strftime("%d/%m/%Y") if pd.notna(data_obj) else str(row["data"])
+            comp_sel = str(self.competencia_selecionada).strip()
 
-                resultado.append({
-                    "id": int(row["id"]),
-                    "data": data_fmt,
-                    "tipo": str(row["tipo"]),
-                    "categoria": str(row["categoria"]),
-                    "descricao": desc_str,
-                    "valor": f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-                })
+            for _, row in df.iterrows():
+                data_raw = str(row["data"]).strip()
+                dt_obj = pd.to_datetime(data_raw, format="%Y-%m-%d", errors="coerce")
+                if pd.isna(dt_obj):
+                    dt_obj = pd.to_datetime(data_raw, format="%d/%m/%Y", errors="coerce")
+                if pd.isna(dt_obj):
+                    dt_obj = pd.to_datetime(data_raw, errors="coerce")
+                
+                comp_lanc = dt_obj.strftime("%m/%Y") if pd.notna(dt_obj) else "Indefinido"
+
+                if comp_lanc == comp_sel:
+                    desc = row["descricao"]
+                    desc_str = "" if pd.isna(desc) else str(desc)
+                    val_float = float(row['valor'] or 0.0)
+                    data_fmt = dt_obj.strftime("%d/%m/%Y") if pd.notna(dt_obj) else data_raw
+
+                    resultado.append({
+                        "id": int(row["id"]),
+                        "data": data_fmt,
+                        "tipo": str(row["tipo"]),
+                        "categoria": str(row["categoria"]),
+                        "descricao": desc_str,
+                        "valor": f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                    })
             return resultado
         except Exception as e:
             print(f"Erro ao carregar lista mes: {e}")
-            return []
-        
-    @rx.var
-    def itens_select_lancamentos(self) -> list[str]:
-        _ = self.refresh_trigger
-        try:
-            database.inicializar_banco()
-            conexao = database.obter_conexao()
-            df = pd.read_sql_query("SELECT id, data, tipo, categoria, descricao, valor FROM lancamentos ORDER BY id DESC", conexao)
-            conexao.close()
-            if df.empty:
-                return []
-            
-            itens = []
-            for _, row in df.iterrows():
-                val_float = float(row['valor'] or 0.0)
-                val_fmt = f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                
-                data_raw = str(row["data"])
-                dt_obj = pd.to_datetime(data_raw, errors="coerce")
-                data_fmt = dt_obj.strftime("%d/%m/%Y") if pd.notna(dt_obj) else data_raw
-
-                itens.append(f"{int(row['id'])} - {data_fmt} | {str(row['tipo'])} | {str(row['categoria'])} | {val_fmt}")
-            return itens
-        except Exception as e:
-            print(f"Erro ao carregar select: {e}")
             return []
 
     def selecionar_lancamento(self, selecao: str):
@@ -136,8 +122,13 @@ class GerenciarState(rx.State):
                 self.descricao_edit = str(row[2] or "")
                 self.valor_edit = str(row[3] or "0.0")
                 
-                raw_data = str(row[4] or "")
-                dt_parse = pd.to_datetime(raw_data, errors="coerce")
+                raw_data = str(row[4] or "").strip()
+                dt_parse = pd.to_datetime(raw_data, format="%Y-%m-%d", errors="coerce")
+                if pd.isna(dt_parse):
+                    dt_parse = pd.to_datetime(raw_data, format="%d/%m/%Y", errors="coerce")
+                if pd.isna(dt_parse):
+                    dt_parse = pd.to_datetime(raw_data, errors="coerce")
+                    
                 self.data_edit = dt_parse.strftime("%d/%m/%Y") if pd.notna(dt_parse) else raw_data
         except Exception as e:
             print(f"Erro ao selecionar: {e}")
@@ -148,12 +139,17 @@ class GerenciarState(rx.State):
         try:
             val_limpo = abs(float(self.valor_edit.replace(",", ".")))
             
+            dt_obj = pd.to_datetime(self.data_edit.strip(), format="%d/%m/%Y", errors="coerce")
+            if pd.isna(dt_obj):
+                dt_obj = pd.to_datetime(self.data_edit.strip(), errors="coerce")
+            data_salvar = dt_obj.strftime("%Y-%m-%d") if pd.notna(dt_obj) else self.data_edit.strip()
+            
             database.inicializar_banco()
             conexao = database.obter_conexao()
             cursor = conexao.cursor()
             cursor.execute(
                 "UPDATE lancamentos SET tipo = %s, data = %s, categoria = %s, descricao = %s, valor = %s WHERE id = %s",
-                (self.tipo_atual.strip(), self.data_edit.strip(), self.categoria_edit.strip(), self.descricao_edit.strip(), val_limpo, self.id_selecionado)
+                (self.tipo_atual.strip(), data_salvar, self.categoria_edit.strip(), self.descricao_edit.strip(), val_limpo, self.id_selecionado)
             )
             conexao.commit()
             cursor.close()
@@ -161,7 +157,7 @@ class GerenciarState(rx.State):
             
             self.cancelar_selecao()
             self.refresh_trigger += 1
-            return rx.window_alert("Lançamento atualizado com sucesso!")
+            return FinanceState.forcar_atualizacao_global
         except Exception as e:
             return rx.window_alert(f"Erro ao atualizar: {e}")
         
@@ -179,7 +175,7 @@ class GerenciarState(rx.State):
             
             self.cancelar_selecao()
             self.refresh_trigger += 1
-            return rx.window_alert("Lançamento excluído com sucesso!")
+            return FinanceState.forcar_atualizacao_global
         except Exception as e:
             return rx.window_alert(f"Erro ao excluir: {e}")
 
@@ -213,7 +209,7 @@ def pagina_gerenciar() -> rx.Component:
                 rx.heading("🔄 Selecionar Lançamento para Edição ou Correção", font_size="1.2rem", color="#1e293b", mb="3"),
                 rx.flex(
                     rx.select(
-                        GerenciarState.itens_select_lancamentos,
+                        FinanceState.itens_select_lancamentos,
                         placeholder="Selecione um lançamento...",
                         on_change=GerenciarState.selecionar_lancamento,
                         width="100%",

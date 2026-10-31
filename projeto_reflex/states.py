@@ -23,6 +23,11 @@ class FinanceState(rx.State):
         self.corrigir_tipos_resgates_automatico()
         self.calcular_resumo_competencia()
 
+    def forcar_atualizacao_global(self):
+        """Dispara a atualização do estado global e recalcula competências."""
+        self.refresh_trigger += 1
+        self.calcular_resumo_competencia()
+
     def corrigir_tipos_resgates_automatico(self):
         """Corrige automaticamente qualquer resgate que tenha ficado com tipo incorreto na tabela de lançamentos."""
         try:
@@ -274,8 +279,13 @@ class FinanceState(rx.State):
                 val_float = float(row['valor'] or 0.0)
                 val_fmt = f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 
-                data_raw = str(row["data"])
-                dt_obj = pd.to_datetime(data_raw, errors="coerce")
+                data_raw = str(row["data"]).strip()
+                dt_obj = pd.to_datetime(data_raw, format="%Y-%m-%d", errors="coerce")
+                if pd.isna(dt_obj):
+                    dt_obj = pd.to_datetime(data_raw, format="%d/%m/%Y", errors="coerce")
+                if pd.isna(dt_obj):
+                    dt_obj = pd.to_datetime(data_raw, errors="coerce")
+
                 data_fmt = dt_obj.strftime("%d/%m/%Y") if pd.notna(dt_obj) else data_raw
 
                 resultado.append({
@@ -436,6 +446,38 @@ class FinanceState(rx.State):
         except Exception:
             return []
 
+    @rx.var
+    def itens_select_lancamentos(self) -> list[str]:
+        """Traz todos os lançamentos ordenados do mais recente para o mais antigo, vinculados ao refresh_trigger."""
+        _ = self.refresh_trigger
+        try:
+            database.inicializar_banco()
+            conexao = database.obter_conexao()
+            df = pd.read_sql_query("SELECT id, data, tipo, categoria, descricao, valor FROM lancamentos ORDER BY id DESC", conexao)
+            conexao.close()
+            if df.empty:
+                return []
+            
+            itens = []
+            for _, row in df.iterrows():
+                val_float = float(row['valor'] or 0.0)
+                val_fmt = f"R$ {val_float:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                
+                data_raw = str(row["data"]).strip()
+                dt_obj = pd.to_datetime(data_raw, format="%Y-%m-%d", errors="coerce")
+                if pd.isna(dt_obj):
+                    dt_obj = pd.to_datetime(data_raw, format="%d/%m/%Y", errors="coerce")
+                if pd.isna(dt_obj):
+                    dt_obj = pd.to_datetime(data_raw, errors="coerce")
+                    
+                data_fmt = dt_obj.strftime("%d/%m/%Y") if pd.notna(dt_obj) else data_raw
+
+                itens.append(f"{int(row['id'])} - {data_fmt} | {str(row['tipo'])} | {str(row['categoria'])} | {val_fmt}")
+            return itens
+        except Exception as e:
+            print(f"Erro ao carregar select: {e}")
+            return []
+        
     # ==========================================
     # MOTOR DE CÁLCULO DE COMPETÊNCIA
     # ==========================================
@@ -631,7 +673,7 @@ class FinanceState(rx.State):
             try:
                 df_total = pd.read_sql_query("SELECT id, data, valor, local_aplicacao FROM desafio_aportes", conexao)
             except:
-                df_total = pd.DataFrame(columns=["id", "data", "valor", "local_aplicacao"])
+                df_total = pd.DataFrame(columns=["id, data, valor, local_aplicacao"])
             conexao.close()
 
             if not df_total.empty:
@@ -827,5 +869,5 @@ class DiagnosticoState(rx.State):
     def set_competencia_selecionada(self, valor: str):
         self.competencia_selecionada = valor
 
-    def carregar_dados(self):
+    def carregar_dados(self, *args, **kwargs):
         pass
