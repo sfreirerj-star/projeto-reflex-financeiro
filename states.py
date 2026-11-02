@@ -646,16 +646,18 @@ class FinanceState(rx.State):
 
             conexao.close()
 
-            # Tratamento de valor_num em aportes e resgates
-            if not df_aportes.empty and "valor" in df_aportes.columns:
-                df_aportes["valor_num"] = pd.to_numeric(df_aportes["valor"], errors="coerce").fillna(0.0)
+            # Filtra APENAS capital investido do bolso na competência selecionada (garantindo conversão exata da data)
+            if not df_aportes.empty and "data" in df_aportes.columns:
+                df_aportes_mes = df_aportes[
+                    (df_aportes["competencia"] == comp_sel)
+                    & (~df_aportes["local_aplicacao"].astype(str).str.contains("Rendimento", case=False, na=False))
+                ].copy()
             else:
-                df_aportes["valor_num"] = 0.0
+                df_aportes_mes = pd.DataFrame()
 
-            if not df_resgates.empty and "valor" in df_resgates.columns:
-                df_resgates["valor_num"] = pd.to_numeric(df_resgates["valor"], errors="coerce").fillna(0.0)
-            else:
-                df_resgates["valor_num"] = 0.0
+            total_aportes_mes = (
+                df_aportes_mes["valor_num"].sum() if not df_aportes_mes.empty and "valor_num" in df_aportes_mes.columns else 0.0
+            )
 
             def extrair_comp(data_val):
                 if pd.isna(data_val) or data_val is None:
