@@ -16,6 +16,45 @@ class FinanceState(rx.State):
     # Gatilho para forçar a atualização imediata das tabelas
     refresh_trigger: int = 0
 
+    # Propriedade dinâmica para listar todas as competências existentes no banco de forma automática
+    @rx.var
+    def competencias_disponiveis(self) -> list[str]:
+        """Busca dinamicamente todas as competências (MM/AAAA) existentes nas tabelas e garante o mês atual."""
+        try:
+            database.inicializar_banco()
+            conexao = obter_conexao()
+            
+            datas_encontradas = []
+            for tabela in ["lancamentos", "desafio_aportes", "desafio_resgates", "desafio_rendimentos"]:
+                try:
+                    df = pd.read_sql_query(f"SELECT data FROM {tabela}", conexao)
+                    if not df.empty and "data" in df.columns:
+                        datas_encontradas.extend(df["data"].dropna().tolist())
+                except Exception:
+                    pass
+            conexao.close()
+            
+            meses_set = set()
+            # Adiciona sempre o mês atual e o mês passado (outubro/2026) como garantia de segurança
+            meses_set.add((datetime.now().strftime("%m/%Y"), datetime.now().strftime("%Y-%m")))
+            meses_set.add(("10/2026", "2026-10"))
+            
+            for d in datas_encontradas:
+                if not d:
+                    continue
+                d_str = str(d).strip()
+                # Tenta converter string ou objeto data/timestamp diretamente
+                dt = pd.to_datetime(d_str, errors="coerce")
+                if pd.notna(dt):
+                    meses_set.add((dt.strftime("%m/%Y"), dt.strftime("%Y-%m")))
+            
+            # Ordena do mais recente para o mais antigo
+            lista_ordenada = sorted(list(meses_set), key=lambda x: x[1], reverse=True)
+            return [item[0] for item in lista_ordenada]
+        except Exception as e:
+            print(f"Erro ao carregar competências disponíveis: {e}")
+            return [datetime.now().strftime("%m/%Y"), "10/2026"]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         database.inicializar_banco()
@@ -578,14 +617,14 @@ class FinanceState(rx.State):
         return resultado
         
     # ==========================================
-    # MOTOR DE CÁLCULO DE COMPETÊNCIA (ESPELHO STREAMLIT)
+    # MOTOR DE CÁLCULO DE COMPETÊNCIA (ESPELHO STREAMLIT UNIFICADO)
     # ==========================================
     def set_competencia_selecionada(self, nova_competencia: str):
         self.competencia_selecionada = nova_competencia
         self.calcular_resumo_competencia()
 
     def calcular_resumo_competencia(self) -> None:
-        """Calcula receitas, despesas, aportes e resgates replicando exatamente o modelo do Streamlit."""
+        """Calcula receitas, despesas, aportes reais do bolso e resgates replicando exatamente o modelo do Streamlit."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
@@ -702,10 +741,11 @@ class FinanceState(rx.State):
                 else 0.0
             )
 
+            # Filtra APENAS capital investido do bolso (desconsidera rendimentos para o fluxo de caixa do Itaú)
             df_aportes_mes = (
                 df_aportes[
                     (df_aportes["competencia"] == comp_sel)
-                    & (~df_aportes["local_aplicacao"].str.contains("Rendimento", case=False, na=False))
+                    & (~df_aportes["local_aplicacao"].astype(str).str.contains("Rendimento", case=False, na=False))
                 ].copy()
                 if not df_aportes.empty
                 else pd.DataFrame()
@@ -753,7 +793,7 @@ class FinanceState(rx.State):
                             apo_c = (
                                 df_ap[
                                     (df_ap["comp_ordem"] == ord_comp)
-                                    & (~df_ap["local_aplicacao"].str.contains("Rendimento", case=False, na=False))
+                                    & (~df_ap["local_aplicacao"].astype(str).str.contains("Rendimento", case=False, na=False))
                                 ]["valor_num"].sum()
                                 if not df_ap.empty and "valor_num" in df_ap.columns
                                 else 0.0
@@ -1041,7 +1081,7 @@ class FinanceState(rx.State):
         try:
             conexao = obter_conexao()
             cursor = conexao.cursor()
-            cursor.execute("DELETE FROM desafio_aportes WHERE id = %s", (int(id_lancamento),))
+            conexao.execute("DELETE FROM desafio_aportes WHERE id = %s", (int(id_lancamento),))
             conexao.commit()
             cursor.close()
             conexao.close()

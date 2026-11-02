@@ -39,12 +39,12 @@ def dashboard_resumo_competencia() -> rx.Component:
             rx.spacer(),
             rx.hstack(
                 rx.text("Competência:", font_size="0.9rem", color="#64748b"),
-                rx.input(
+                # Substituído rx.input por rx.select para habilitar o menu suspenso com setinha
+                rx.select(
+                    FinanceState.competencias_disponiveis,
                     value=FinanceState.competencia_selecionada,
                     on_change=FinanceState.set_competencia_selecionada,
-                    placeholder="MM/AAAA",
-                    max_length=7,
-                    style={"width": "130px", "minWidth": "130px", "display": "inline-block"},
+                    style={"width": "130px", "minWidth": "130px"},
                 ),
                 align_items="center",
                 wrap="wrap",
