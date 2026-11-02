@@ -578,14 +578,14 @@ class FinanceState(rx.State):
         return resultado
         
     # ==========================================
-    # MOTOR DE CÁLCULO DE COMPETÊNCIA
+    # MOTOR DE CÁLCULO DE COMPETÊNCIA (ESPELHO STREAMLIT)
     # ==========================================
     def set_competencia_selecionada(self, nova_competencia: str):
         self.competencia_selecionada = nova_competencia
         self.calcular_resumo_competencia()
 
     def calcular_resumo_competencia(self) -> None:
-        """Calcula receitas, despesas, aportes e resgates unificando perfeitamente a liquidez e acumulando o saldo anterior."""
+        """Calcula receitas, despesas, aportes e resgates replicando exatamente o modelo do Streamlit."""
         try:
             database.inicializar_banco()
             conexao = database.obter_conexao()
@@ -596,11 +596,38 @@ class FinanceState(rx.State):
                 df_lancamentos = pd.DataFrame(columns=["data", "tipo", "categoria", "descricao", "valor"])
 
             try:
+                df_aportes = pd.read_sql_query("SELECT id, data, valor, local_aplicacao FROM desafio_aportes", conexao)
+            except Exception:
+                df_aportes = pd.DataFrame(columns=["id", "data", "valor", "local_aplicacao"])
+
+            try:
                 df_resgates = pd.read_sql_query("SELECT id, data, valor, local_origem, motivo FROM desafio_resgates", conexao)
             except Exception:
                 df_resgates = pd.DataFrame(columns=["id", "data", "valor", "local_origem", "motivo"])
 
             conexao.close()
+
+            # Tratamento de valor_num em aportes e resgates
+            if not df_aportes.empty and "valor" in df_aportes.columns:
+                df_aportes["valor_num"] = pd.to_numeric(df_aportes["valor"], errors="coerce").fillna(0.0)
+            else:
+                df_aportes["valor_num"] = 0.0
+
+            if not df_resgates.empty and "valor" in df_resgates.columns:
+                df_resgates["valor_num"] = pd.to_numeric(df_resgates["valor"], errors="coerce").fillna(0.0)
+            else:
+                df_resgates["valor_num"] = 0.0
+
+            # Integrar resgates que estão nos lançamentos também, se houver
+            if not df_lancamentos.empty and "categoria" in df_lancamentos.columns:
+                df_resg_lanc = df_lancamentos[
+                    df_lancamentos["categoria"].astype(str).str.strip().str.lower() == "resgate"
+                ].copy()
+                if not df_resg_lanc.empty:
+                    df_resg_lanc["valor_num"] = pd.to_numeric(df_resg_lanc["valor"], errors="coerce").fillna(0.0)
+                    df_resgates = pd.concat([df_resgates, df_resg_lanc], ignore_index=True).drop_duplicates(
+                        subset=["data", "valor_num"]
+                    )
 
             def extrair_comp(data_val):
                 if pd.isna(data_val) or data_val is None:
@@ -609,9 +636,7 @@ class FinanceState(rx.State):
                     if isinstance(data_val, (pd.Timestamp, datetime)):
                         return data_val.strftime("%m/%Y"), data_val.strftime("%Y-%m")
                     data_str = str(data_val).strip()
-                    dt = pd.to_datetime(data_str, format="%Y-%m-%d", errors="coerce")
-                    if pd.isna(dt):
-                        dt = pd.to_datetime(data_str, format="%d/%m/%Y", errors="coerce")
+                    dt = pd.to_datetime(data_str, format="%d/%m/%Y", errors="coerce")
                     if pd.isna(dt):
                         dt = pd.to_datetime(data_str, errors="coerce")
                     if pd.notna(dt):
@@ -623,102 +648,135 @@ class FinanceState(rx.State):
             if not df_lancamentos.empty and "valor" in df_lancamentos.columns:
                 df_lancamentos["valor"] = pd.to_numeric(df_lancamentos["valor"], errors="coerce").fillna(0.0)
                 df_lancamentos["tipo_clean"] = df_lancamentos["tipo"].astype(str).str.strip().str.lower()
-                df_lancamentos["cat_clean"] = df_lancamentos["categoria"].astype(str).str.strip().str.lower()
                 res_lanc = df_lancamentos["data"].apply(extrair_comp)
                 df_lancamentos["competencia"] = [x[0] for x in res_lanc]
-                df_lancamentos["comp_sort"] = [x[1] for x in res_lanc]
+                df_lancamentos["comp_ordem"] = [x[1] for x in res_lanc]
             else:
                 df_lancamentos["tipo_clean"] = ""
-                df_lancamentos["cat_clean"] = ""
                 df_lancamentos["competencia"] = "Indefinido"
-                df_lancamentos["comp_sort"] = "9999-99"
+                df_lancamentos["comp_ordem"] = "9999-99"
 
-            if not df_resgates.empty and "valor" in df_resgates.columns:
-                df_resgates["valor_num"] = pd.to_numeric(df_resgates["valor"], errors="coerce").fillna(0.0)
+            if not df_aportes.empty and "data" in df_aportes.columns:
+                res_ap = df_aportes["data"].apply(extrair_comp)
+                df_aportes["competencia"] = [x[0] for x in res_ap]
+                df_aportes["comp_ordem"] = [x[1] for x in res_ap]
+            else:
+                df_aportes["competencia"] = "Indefinido"
+                df_aportes["comp_ordem"] = "9999-99"
+
+            if not df_resgates.empty and "data" in df_resgates.columns:
                 res_resg = df_resgates["data"].apply(extrair_comp)
                 df_resgates["competencia"] = [x[0] for x in res_resg]
-                df_resgates["comp_sort"] = [x[1] for x in res_resg]
+                df_resgates["comp_ordem"] = [x[1] for x in res_resg]
             else:
                 df_resgates["competencia"] = "Indefinido"
-                df_resgates["comp_sort"] = "9999-99"
+                df_resgates["comp_ordem"] = "9999-99"
 
             comp_sel = str(self.competencia_selecionada).strip()
             dt_sel = pd.to_datetime(comp_sel, format="%m/%Y", errors="coerce")
-            sort_sel = dt_sel.strftime("%Y-%m") if pd.notna(dt_sel) else "9999-99"
+            ordem_selecionada = dt_sel.strftime("%Y-%m") if pd.notna(dt_sel) else datetime.now().strftime("%Y-%m")
 
-            # --- CÁLCULO AUTOMÁTICO DO SALDO ANTERIOR (ACUMULADO DOS MESES ANTERIORES) ---
-            saldo_remanescente_anterior = 0.0
-            if not df_lancamentos.empty:
-                df_anteriores = df_lancamentos[df_lancamentos["comp_sort"] < sort_sel]
-                if not df_anteriores.empty:
-                    ant_rec = df_anteriores[
-                        df_anteriores["tipo_clean"].isin(["receita", "crédito", "credito", "entrada"]) 
-                        & (~df_anteriores["cat_clean"].isin(["resgate", "resgates"]))
-                        & (~df_anteriores["tipo_clean"].isin(["resgate", "resgates"]))
-                        & (~df_anteriores["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"]))
-                    ]["valor"].sum()
-
-                    ant_gast = df_anteriores[
-                        df_anteriores["tipo_clean"].isin(["despesa", "débito", "debito", "saida"])
-                        & (~df_anteriores["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"]))
-                    ]["valor"].sum()
-
-                    ant_aport = df_anteriores[
-                        df_anteriores["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"])
-                    ]["valor"].sum()
-
-                    ant_resg = df_anteriores[
-                        df_anteriores["tipo_clean"].isin(["resgate", "resgates"]) 
-                        | df_anteriores["cat_clean"].isin(["resgate", "resgates"])
-                    ]["valor"].sum()
-
-                    saldo_remanescente_anterior = ant_rec + ant_resg - ant_gast - ant_aport
-
-            # Soma também eventuais resgates avulsos de meses anteriores
-            if not df_resgates.empty:
-                df_resg_ant = df_resgates[df_resgates["comp_sort"] < sort_sel]
-                if not df_resg_ant.empty:
-                    saldo_remanescente_anterior += df_resg_ant["valor_num"].sum()
-
-            # --- CÁLCULO DA COMPETÊNCIA ATUAL ---
-            df_lanc_mes = df_lancamentos[df_lancamentos["competencia"] == comp_sel] if not df_lancamentos.empty else pd.DataFrame()
+            # Isola os lançamentos comuns do mês (excluindo resgates duplicados no cálculo de receitas comuns)
+            df_lanc_mes = (
+                df_lancamentos[
+                    (df_lancamentos["competencia"] == comp_sel)
+                    & (df_lancamentos["categoria"].astype(str).str.strip().str.lower() != "resgate")
+                ].copy()
+                if not df_lancamentos.empty
+                else pd.DataFrame()
+            )
 
             total_receitas_mes = (
                 df_lanc_mes[
-                    df_lanc_mes["tipo_clean"].isin(["receita", "crédito", "credito", "entrada"]) 
-                    & (~df_lanc_mes["cat_clean"].isin(["resgate", "resgates"]))
-                    & (~df_lanc_mes["tipo_clean"].isin(["resgate", "resgates"]))
-                    & (~df_lanc_mes["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"]))
+                    df_lanc_mes["tipo_clean"].isin(["receita", "crédito", "credito", "entrada"])
                 ]["valor"].sum()
-                if not df_lanc_mes.empty else 0.0
+                if not df_lanc_mes.empty
+                else 0.0
             )
 
             total_gastos_mes = (
                 df_lanc_mes[
                     df_lanc_mes["tipo_clean"].isin(["despesa", "débito", "debito", "saida"])
-                    & (~df_lanc_mes["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"]))
                 ]["valor"].sum()
-                if not df_lanc_mes.empty else 0.0
+                if not df_lanc_mes.empty
+                else 0.0
             )
 
+            df_aportes_mes = (
+                df_aportes[
+                    (df_aportes["competencia"] == comp_sel)
+                    & (~df_aportes["local_aplicacao"].str.contains("Rendimento", case=False, na=False))
+                ].copy()
+                if not df_aportes.empty
+                else pd.DataFrame()
+            )
             total_aportes_mes = (
-                df_lanc_mes[df_lanc_mes["tipo_clean"].isin(["investimento", "investimentos", "aporte", "aportes"])]["valor"].sum()
-                if not df_lanc_mes.empty else 0.0
+                df_aportes_mes["valor_num"].sum() if not df_aportes_mes.empty and "valor_num" in df_aportes_mes.columns else 0.0
             )
 
+            df_resgates_mes = (
+                df_resgates[df_resgates["competencia"] == comp_sel].copy()
+                if not df_resgates.empty and "competencia" in df_resgates.columns
+                else pd.DataFrame()
+            )
             total_resgates_mes = (
-                df_lanc_mes[
-                    df_lanc_mes["tipo_clean"].isin(["resgate", "resgates"]) 
-                    | df_lanc_mes["cat_clean"].isin(["resgate", "resgates"])
-                ]["valor"].sum()
-                if not df_lanc_mes.empty else 0.0
+                df_resgates_mes["valor_num"].sum() if not df_resgates_mes.empty and "valor_num" in df_resgates_mes.columns else 0.0
             )
 
-            if total_resgates_mes == 0.0 and not df_resgates.empty:
-                df_resgates_mes = df_resgates[df_resgates["competencia"] == comp_sel]
-                total_resgates_mes = df_resgates_mes["valor_num"].sum() if not df_resgates_mes.empty else 0.0
+            impacto_investimentos_mes = total_aportes_mes - total_resgates_mes
 
-            saldo_mes = saldo_remanescente_anterior + total_receitas_mes + total_resgates_mes - total_gastos_mes - total_aportes_mes
+            # --- MOTOR EXATO DE SALDO ACUMULADO DO STREAMLIT ---
+            def calcular_saldo_ate(df_lan, df_ap, df_res, ordem_alvo):
+                try:
+                    todas_ordens = sorted(
+                        list(
+                            set(
+                                df_lan[df_lan["comp_ordem"] != "9999-99"]["comp_ordem"].unique().tolist()
+                                + df_ap[df_ap["comp_ordem"] != "9999-99"]["comp_ordem"].unique().tolist()
+                                + (df_res[df_res["comp_ordem"] != "9999-99"]["comp_ordem"].unique().tolist() if not df_res.empty and "comp_ordem" in df_res.columns else [])
+                            )
+                        )
+                    )
+                    saldo_acumulado = 0.0
+                    for ord_comp in todas_ordens:
+                        if ord_comp < ordem_alvo:
+                            rec = df_lan[
+                                (df_lan["comp_ordem"] == ord_comp)
+                                & (df_lan["categoria"].astype(str).str.strip().str.lower() != "resgate")
+                                & (df_lan["tipo_clean"].isin(["receita", "crédito", "credito", "entrada"]))
+                            ]["valor"].sum()
+                            gas = df_lan[
+                                (df_lan["comp_ordem"] == ord_comp)
+                                & (df_lan["tipo_clean"].isin(["despesa", "débito", "debito", "saida"]))
+                            ]["valor"].sum()
+
+                            apo_c = (
+                                df_ap[
+                                    (df_ap["comp_ordem"] == ord_comp)
+                                    & (~df_ap["local_aplicacao"].str.contains("Rendimento", case=False, na=False))
+                                ]["valor_num"].sum()
+                                if not df_ap.empty and "valor_num" in df_ap.columns
+                                else 0.0
+                            )
+                            res_c = (
+                                df_res[df_res["comp_ordem"] == ord_comp]["valor_num"].sum()
+                                if not df_res.empty and "valor_num" in df_res.columns
+                                else 0.0
+                            )
+
+                            saldo_acumulado += (rec - gas - (apo_c - res_c))
+                    return saldo_acumulado
+                except Exception:
+                    return 0.0
+
+            saldo_remanescente_anterior = calcular_saldo_ate(df_lancamentos, df_aportes, df_resgates, ordem_selecionada)
+
+            saldo_mes = (
+                saldo_remanescente_anterior
+                + total_receitas_mes
+                - total_gastos_mes
+                - impacto_investimentos_mes
+            )
 
             def fmt_m(val):
                 return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
